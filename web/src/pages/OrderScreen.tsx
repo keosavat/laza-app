@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRightLeft, Ban, Check, Minus, Percent, Plus, Printer, QrCode, Send, Trash2, Wallet, ChefHat, X } from 'lucide-react';
 import QrModal from '../components/QrModal';
-import { get, post, type Order, type OrderItem, type FloorTable } from '../lib/api';
+import { get, post, type Order, type OrderItem, type FloorTable, type ItemStatus } from '../lib/api';
 import { useSession, useSync } from '../lib/store';
-import { can, kip, since, STATUS_CLASS, STATUS_LABEL, time } from '../lib/format';
+import { can, dateTime, kip, since, STATUS_CLASS, STATUS_LABEL, time } from '../lib/format';
 import { device } from '../lib/device';
 import { printBill, printKitchenTicket } from '../lib/print';
 import MenuPicker, { lineKey, linePrice, type CartLine } from '../components/MenuPicker';
@@ -18,8 +18,10 @@ export default function OrderScreen() {
   const role = user!.role;
   const [order, reload, loading] = useLoad(() => get<Order>(`/orders/${id}`), [id]);
   const [cart, setCart] = useState<CartLine[]>([]);
-  const [modal, setModal] = useState<null | 'discount' | 'transfer' | 'checkout' | 'cancel' | 'qr'>(null);
+  const [modal, setModal] = useState<null | 'discount' | 'transfer' | 'checkout' | 'cancel' | 'qr' | 'bulkcancel'>(null);
   const [voiding, setVoiding] = useState<OrderItem | null>(null);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [openId, setOpenId] = useState<number | null>(null);
   const [tab, setTab] = useState<'menu' | 'order'>('menu');
   const [params, setParams] = useSearchParams();
   const qrShown = useRef(false);
@@ -35,11 +37,20 @@ export default function OrderScreen() {
     }
   }, [order?.qr_token, params, setParams]);
 
+  // Drop selections for lines that were cancelled, are waiting for approval, or whose order closed.
+  useEffect(() => {
+    if (!order) return;
+    const ok = new Set(order.status === 'open' ? order.items.filter((i) => i.status !== 'cancelled' && !i.awaiting).map((i) => i.id) : []);
+    setSelected((s) => (s.every((x) => ok.has(x)) ? s : s.filter((x) => ok.has(x))));
+  }, [order]);
+
   const back = useCallback(() => nav(order?.type === 'takeaway' ? '/takeaway' : '/tables'), [nav, order?.type]);
 
   if (loading || !order) return <Spinner />;
   const closed = order.status !== 'open';
   const waiting = order.items.filter((i) => i.awaiting && i.status !== 'cancelled');
+  // Lines staff can act on in bulk: live, approved, and the order still open.
+  const selectable = closed || !can(role, 'kitchen') ? [] : order.items.filter((i) => i.status !== 'cancelled' && !i.awaiting);
 
   const add = (item: CartLine['item'], options: CartLine['options'], note: string) => {
     if (closed) return;
@@ -73,6 +84,19 @@ export default function OrderScreen() {
     );
     if (ok) reload();
   }
+
+  async function setStatusFor(ids: number[], status: ItemStatus) {
+    const r = await run(() => post<Order>(`/orders/${order!.id}/items/status`, { itemIds: ids, status }), `ປ່ຽນສະຖານະ ${ids.length} ລາຍການແລ້ວ`);
+    if (r) {
+      setSelected([]);
+      reload();
+    }
+  }
+  const setStatus = (status: ItemStatus) => setStatusFor(selected, status);
+  const reprint = () => {
+    printKitchenTicket(order!, order!.items.filter((i) => selected.includes(i.id)), user!.name);
+    setSelected([]);
+  };
 
   async function checkout() {
     if (waiting.length) return toast.err('ກະລຸນາຢືນຢັນ ຫຼື ປະຕິເສດລາຍການຈາກລູກຄ້າກ່ອນຊຳລະ');
@@ -139,40 +163,84 @@ export default function OrderScreen() {
           </div>
         )}
         {active.length === 0 && waiting.length === 0 && cart.length === 0 && <div className="py-10 text-center text-sm text-slate-400">ກົດເມນູເພື່ອເພີ່ມລາຍການ</div>}
+        {selectable.length > 0 && (
+          <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-2 backdrop-blur">
+            <label className="flex items-center gap-2 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                className="size-4 accent-brand-600"
+                checked={selected.length === selectable.length}
+                onChange={(e) => setSelected(e.target.checked ? selectable.map((i) => i.id) : [])}
+              />
+              {selected.length ? `ເລືອກແລ້ວ ${selected.length} ລາຍການ` : 'ເລືອກທັງໝົດ'}
+              <span className="text-slate-400">· ກົດແຖວເພື່ອເບິ່ງລາຍລະອຽດ</span>
+            </label>
+            {selected.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <Button size="sm" onClick={() => setStatus('served')} disabled={busy} className="bg-emerald-600! hover:bg-emerald-700!">ເສີບແລ້ວ</Button>
+                <Button size="sm" onClick={() => setStatus('preparing')} disabled={busy} className="bg-sky-600! hover:bg-sky-700!">ກຳລັງເຮັດ</Button>
+                <Button size="sm" onClick={() => setStatus('ready')} disabled={busy} className="bg-amber-500! hover:bg-amber-600!">ພ້ອມເສີບ</Button>
+                <Button size="sm" variant="secondary" onClick={reprint}><Printer className="size-4" /> ພິມຄົວຄືນ ({selected.length})</Button>
+                {can(role, 'voidItem') && (
+                  <Button size="sm" variant="danger" onClick={() => setModal('bulkcancel')}><Ban className="size-4" /> ຍົກເລີກ</Button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         {order.items.length > 0 && (
           <div className="divide-y divide-slate-100">
-            {order.items.map((it) => (
-              <div key={it.id} className={cx('flex gap-2 px-3 py-2', it.status === 'cancelled' && 'opacity-60', it.awaiting === 1 && it.status !== 'cancelled' && 'bg-rose-50/60')}>
-                <div className="tabular w-7 shrink-0 text-right font-semibold">{it.qty}×</div>
-                <div className="min-w-0 flex-1">
-                  <div className={cx('text-sm font-medium', it.status === 'cancelled' && 'line-through')}>{it.name}</div>
-                  <Extras options={it.options.map((o) => o.name)} note={it.note} />
-                  {it.cancel_reason && <div className="text-xs text-rose-600">ເຫດຜົນ: {it.cancel_reason}</div>}
-                  <div className="mt-0.5 flex items-center gap-2">
-                    {it.awaiting === 1 && it.status !== 'cancelled' ? (
-                      <Badge className="bg-rose-100 text-rose-700">ລໍຢືນຢັນ</Badge>
-                    ) : (
-                      <Badge className={STATUS_CLASS[it.status]}>{STATUS_LABEL[it.status]}</Badge>
-                    )}
-                    <span className="text-[11px] text-slate-400">{time(it.created_at)} · {it.source === 'customer' ? 'ລູກຄ້າສັ່ງເອງ' : it.created_by_name}</span>
+            {order.items.map((it) => {
+              const canPick = selectable.some((s) => s.id === it.id);
+              const isOpen = openId === it.id;
+              return (
+                <div key={it.id} className={cx(it.status === 'cancelled' && 'opacity-60', it.awaiting === 1 && it.status !== 'cancelled' && 'bg-rose-50/60', selected.includes(it.id) && 'bg-brand-50')}>
+                  <div className="flex gap-2 px-3 py-2">
+                    <input
+                      type="checkbox"
+                      disabled={!canPick}
+                      checked={selected.includes(it.id)}
+                      onChange={() => setSelected((s) => (s.includes(it.id) ? s.filter((x) => x !== it.id) : [...s, it.id]))}
+                      className={cx('mt-1 size-4 shrink-0 accent-brand-600', !canPick && 'invisible')}
+                      aria-label={`ເລືອກ ${it.name}`}
+                    />
+                    <button onClick={() => setOpenId(isOpen ? null : it.id)} className="flex min-w-0 flex-1 gap-2 text-left" aria-expanded={isOpen}>
+                      <div className="tabular w-7 shrink-0 text-right font-semibold">{it.qty}×</div>
+                      <div className="min-w-0 flex-1">
+                        <div className={cx('text-sm font-medium', it.status === 'cancelled' && 'line-through')}>{it.name}</div>
+                        <Extras options={it.options.map((o) => o.name)} note={it.note} />
+                        {it.cancel_reason && <div className="text-xs text-rose-600">ເຫດຜົນ: {it.cancel_reason}</div>}
+                        <div className="mt-0.5 flex items-center gap-2">
+                          {it.awaiting === 1 && it.status !== 'cancelled' ? (
+                            <Badge className="bg-rose-100 text-rose-700">ລໍຢືນຢັນ</Badge>
+                          ) : (
+                            <Badge className={STATUS_CLASS[it.status]}>{STATUS_LABEL[it.status]}</Badge>
+                          )}
+                          <span className="text-[11px] text-slate-400">{time(it.created_at)} · {it.source === 'customer' ? 'ລູກຄ້າສັ່ງເອງ' : it.created_by_name}</span>
+                        </div>
+                      </div>
+                      <div className="tabular shrink-0 text-sm">{kip(it.unit_price * it.qty)}</div>
+                    </button>
                   </div>
-                </div>
-                <div className="text-right">
-                  <div className="tabular text-sm">{kip(it.unit_price * it.qty)}</div>
                   {!closed && it.awaiting === 1 && it.status !== 'cancelled' && can(role, 'pos') && (
-                    <div className="mt-1 flex justify-end gap-2 text-xs">
+                    <div className="flex justify-end gap-3 px-3 pb-2 text-xs">
                       <button onClick={() => decide('approve', [it.id])} className="font-semibold text-emerald-700 hover:underline">ຢືນຢັນ</button>
                       <button onClick={() => decide('reject', [it.id])} className="text-rose-600 hover:underline">ປະຕິເສດ</button>
                     </div>
                   )}
-                  {!closed && !it.awaiting && it.status !== 'cancelled' && can(role, 'voidItem') && (
-                    <button onClick={() => setVoiding(it)} className="mt-1 text-xs text-rose-600 hover:underline">
-                      ຍົກເລີກ
-                    </button>
+                  {isOpen && (
+                    <ItemDetail
+                      item={it}
+                      canVoid={!closed && canPick && can(role, 'voidItem')}
+                      canStatus={!closed && canPick && can(role, 'kitchen')}
+                      onStatus={(s) => setStatusFor([it.id], s)}
+                      onReprint={() => printKitchenTicket(order, [it], user!.name)}
+                      onVoid={() => setVoiding(it)}
+                    />
                   )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
         {cart.length > 0 && (
@@ -276,8 +344,135 @@ export default function OrderScreen() {
           }}
         />
       )}
+      {modal === 'bulkcancel' && (
+        <BulkCancelModal
+          order={order}
+          ids={selected}
+          onClose={() => setModal(null)}
+          onDone={() => {
+            setSelected([]);
+            reload();
+          }}
+        />
+      )}
       {voiding && <VoidModal item={voiding} onClose={() => setVoiding(null)} onDone={reload} />}
     </div>
+  );
+}
+
+/** Expanded details of one order line: price breakdown, who/when, and quick actions. */
+function ItemDetail({
+  item,
+  canVoid,
+  canStatus,
+  onStatus,
+  onReprint,
+  onVoid,
+}: {
+  item: OrderItem;
+  canVoid: boolean;
+  canStatus: boolean;
+  onStatus: (s: ItemStatus) => void;
+  onReprint: () => void;
+  onVoid: () => void;
+}) {
+  const extras = item.options.reduce((s, o) => s + o.price, 0);
+  const base = item.unit_price - extras;
+  const row = (l: string, v: string, cls = '') => (
+    <div className={cx('flex justify-between', cls)}>
+      <span>{l}</span>
+      <span className="tabular">{v}</span>
+    </div>
+  );
+  return (
+    <div className="mx-3 mb-3 space-y-3 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-sm">
+      <div className="space-y-0.5">
+        {row('ລາຄາເມນູ', kip(base))}
+        {item.options.map((o, i) => (
+          <div key={i} className="flex justify-between text-slate-600">
+            <span>+ {o.group}: {o.name}</span>
+            <span className="tabular">{o.price ? kip(o.price) : '—'}</span>
+          </div>
+        ))}
+        {row('ລາຄາ / ຫົວໜ່ວຍ', kip(item.unit_price), 'border-t border-slate-100 pt-0.5')}
+        {row(`× ${item.qty}`, kip(item.unit_price * item.qty), 'font-semibold')}
+      </div>
+      {item.note && <div className="rounded-lg bg-amber-50 px-2 py-1.5 text-amber-800">ໝາຍເຫດ: {item.note}</div>}
+      <div className="space-y-0.5 text-xs text-slate-500">
+        <div>ສັ່ງໂດຍ: {item.source === 'customer' ? 'ລູກຄ້າ (ສະແກນ QR)' : item.created_by_name || '—'} · {dateTime(item.created_at)}</div>
+        {item.updated_at !== item.created_at && <div>ອັບເດດລ່າສຸດ: {dateTime(item.updated_at)}</div>}
+        {item.cancel_reason && <div className="text-rose-600">ເຫດຜົນຍົກເລີກ: {item.cancel_reason}</div>}
+      </div>
+      {(canStatus || canVoid) && (
+        <div className="flex flex-wrap gap-1.5">
+          {canStatus && item.status !== 'served' && (
+            <Button size="sm" className="bg-emerald-600! hover:bg-emerald-700!" onClick={() => onStatus('served')}>ເສີບແລ້ວ</Button>
+          )}
+          {canStatus && <Button size="sm" variant="secondary" onClick={onReprint}><Printer className="size-4" /> ພິມຄົວຄືນ</Button>}
+          {canVoid && (
+            <Button size="sm" variant="danger" onClick={onVoid}>
+              <Ban className="size-4" /> ຍົກເລີກ{item.qty > 1 ? ' (ບາງສ່ວນໄດ້)' : ''}
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BulkCancelModal({ order, ids, onClose, onDone }: { order: Order; ids: number[]; onClose: () => void; onDone: () => void }) {
+  const [reason, setReason] = useState('');
+  const { busy, run } = useAction();
+  const lines = order.items.filter((i) => ids.includes(i.id));
+  const amount = lines.reduce((s, i) => s + i.unit_price * i.qty, 0);
+  const reasons = ['ລູກຄ້າປ່ຽນໃຈ', 'ສັ່ງຜິດ', 'ອາຫານໝົດ', 'ຄົວເຮັດຜິດ'];
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`ຍົກເລີກ ${lines.length} ລາຍການ`}
+      footer={
+        <Button
+          variant="danger"
+          loading={busy}
+          disabled={!reason.trim()}
+          onClick={async () => {
+            const r = await run(() => post(`/orders/${order.id}/items/cancel`, { itemIds: ids, reason }), 'ຍົກເລີກລາຍການແລ້ວ');
+            if (r) {
+              onDone();
+              onClose();
+            }
+          }}
+        >
+          ຢືນຢັນຍົກເລີກ
+        </Button>
+      }
+    >
+      <div className="space-y-4">
+        <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 p-2 text-sm">
+          {lines.map((i) => (
+            <div key={i.id} className="flex justify-between py-0.5">
+              <span>{i.qty}× {i.name}</span>
+              <span className="tabular text-slate-500">{kip(i.unit_price * i.qty)}</span>
+            </div>
+          ))}
+          <div className="mt-1 flex justify-between border-t border-slate-100 pt-1 font-semibold">
+            <span>ລວມທີ່ຈະຕັດອອກ</span>
+            <span className="tabular">{kip(amount)}</span>
+          </div>
+        </div>
+        <Field label="ເຫດຜົນ">
+          <div className="mb-2 flex flex-wrap gap-2">
+            {reasons.map((r) => (
+              <button key={r} onClick={() => setReason(r)} className={cx('rounded-full border px-3 py-1 text-sm', reason === r ? 'border-rose-500 bg-rose-50' : 'border-slate-300')}>
+                {r}
+              </button>
+            ))}
+          </div>
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={200} />
+        </Field>
+      </div>
+    </Modal>
   );
 }
 

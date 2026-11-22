@@ -28,7 +28,7 @@ export interface ChosenOption { group: string; name: string; price: number }
 export interface OrderItem {
   id: number; order_id: number; menu_item_id: number; name: string; unit_price: number; qty: number;
   options: ChosenOption[]; note: string; status: ItemStatus; created_at: string; created_by_name: string; cancel_reason: string;
-  awaiting: number; source: 'staff' | 'customer';
+  awaiting: number; source: 'staff' | 'customer'; updated_at: string;
 }
 export type PayMethod = 'cash' | 'transfer' | 'qr' | 'card';
 export type Currency = 'LAK' | 'USD' | 'THB';

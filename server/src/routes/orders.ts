@@ -219,6 +219,50 @@ export function orderRoutes({ db, emit }: Ctx) {
     res.json(orderDetail(db, it.order_id, req.user.bid));
   });
 
+  // ----- Bulk actions on several selected lines of one open order -----
+  /** Load the selected lines of an order; every line must exist, be live and be approved. */
+  const pickLines = (orderId: number, ids: unknown) => {
+    if (!Array.isArray(ids) || !ids.length) throw bad('ກະລຸນາເລືອກລາຍການ');
+    if (ids.length > 200) throw bad('ເລືອກຫຼາຍເກີນໄປ');
+    const list = [...new Set(ids.map((x) => int(x, 'ລາຍການ')))];
+    const rows = db.all(`SELECT * FROM order_items WHERE order_id = ? AND id IN (${list.map(() => '?').join(',')})`, orderId, ...list);
+    if (rows.length !== list.length) throw notFound('ບໍ່ພົບບາງລາຍການ');
+    for (const r of rows) {
+      if (r.status === 'cancelled') throw conflict(`"${r.name}" ຖືກຍົກເລີກແລ້ວ`);
+      if (r.awaiting) throw conflict(`"${r.name}" ລໍຖ້າຢືນຢັນ ກະລຸນາຢືນຢັນກ່ອນ`);
+    }
+    return rows;
+  };
+
+  r.post('/orders/:id/items/status', requirePerm('kitchen'), (req, res) => {
+    const o = loadOrder(db, int(req.params.id, 'id'), req.user.bid);
+    requireOpen(o);
+    const status = oneOf(req.body.status, 'ສະຖານະ', ITEM_FLOW);
+    db.tx(() => {
+      const rows = pickLines(o.id, req.body.itemIds);
+      for (const row of rows) db.run('UPDATE order_items SET status = ?, updated_at = ? WHERE id = ?', status, now(), row.id);
+    });
+    changed(req.user.bid);
+    res.json(orderDetail(db, o.id, req.user.bid));
+  });
+
+  r.post('/orders/:id/items/cancel', requirePerm('voidItem'), (req, res) => {
+    const o = loadOrder(db, int(req.params.id, 'id'), req.user.bid);
+    requireOpen(o);
+    const reason = str(req.body.reason, 'ເຫດຜົນ', { required: true, max: 200 });
+    db.tx(() => {
+      const rows = pickLines(o.id, req.body.itemIds);
+      const ts = now();
+      for (const row of rows) {
+        db.run("UPDATE order_items SET status = 'cancelled', cancel_reason = ?, updated_at = ? WHERE id = ?", reason, ts, row.id);
+        db.audit(req.user.bid, req.user.uid, 'void_item', 'order_item', row.id, { qty: row.qty, reason, name: row.name });
+      }
+      recalc(db, o.id);
+    });
+    changed(req.user.bid);
+    res.json(orderDetail(db, o.id, req.user.bid));
+  });
+
   /** Kitchen display: items still being prepared, oldest first. */
   r.get('/kitchen', requirePerm('kitchen'), (req, res) => {
     const rows = db.all(
