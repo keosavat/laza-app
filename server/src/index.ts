@@ -1,0 +1,29 @@
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createApp } from './app.ts';
+import { seedIfEmpty } from './seed.ts';
+
+const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const dataDir = process.env.LAZA_DATA_DIR ?? path.join(root, 'data');
+fs.mkdirSync(dataDir, { recursive: true });
+
+// A random JWT secret is generated once and kept next to the database.
+function loadSecret(): string {
+  if (process.env.LAZA_JWT_SECRET) return process.env.LAZA_JWT_SECRET;
+  const file = path.join(dataDir, 'jwt-secret');
+  if (!fs.existsSync(file)) fs.writeFileSync(file, crypto.randomBytes(48).toString('hex'), { mode: 0o600 });
+  return fs.readFileSync(file, 'utf8').trim();
+}
+
+const { server, db } = createApp({
+  dbFile: process.env.LAZA_DB ?? path.join(dataDir, 'laza.db'),
+  jwtSecret: loadSecret(),
+  webDist: path.join(root, '..', 'web', 'dist'),
+});
+
+if (seedIfEmpty(db)) console.log('First run: demo restaurant created (see README for demo logins).');
+
+const port = Number(process.env.PORT ?? 4000);
+server.listen(port, () => console.log(`LAZA app server → http://localhost:${port}`));
