@@ -105,6 +105,7 @@ export default function Dashboard() {
         <ListCard title="ເມນູຂາຍດີ" rows={d.topItems.map((x) => ({ l: x.name, s: `${x.qty} ຈານ`, v: x.amount }))} />
         <ListCard title="ຕາມໝວດ" rows={d.byCategory.map((x) => ({ l: x.name, s: `${x.qty}`, v: x.amount }))} />
         <ListCard title="ຕາມຜູ້ຮັບເງິນ" rows={d.byStaff.map((x) => ({ l: x.name ?? '—', s: `${x.bills} ບິນ`, v: x.amount }))} />
+        <LowStock />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -177,6 +178,30 @@ function ListCard({ title, rows }: { title: string; rows: { l: string; s: string
           ))}
         </div>
       )}
+    </Card>
+  );
+}
+
+/** Ingredients that are running low (links to the inventory page for admins). */
+function LowStock() {
+  const nav = useNavigate();
+  const role = useSession((s) => s.user?.role);
+  const [s] = useLoad(() => get<{ lowCount: number; low: { id: number; name: string; unit: string; stock: number }[] }>('/inventory/summary'));
+  useSync(['menu', 'orders'], () => {});
+  if (!s || s.lowCount === 0) return null;
+  return (
+    <Card className="border-amber-300 bg-amber-50 p-4 lg:col-span-3">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="font-semibold text-amber-900">ວັດຖຸດິບໃກ້ໝົດ ({s.lowCount})</h3>
+        {(role === 'owner' || role === 'manager') && <button onClick={() => nav('/inventory')} className="text-sm font-medium text-amber-800 underline">ຈັດການສະຕັອກ</button>}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {s.low.map((i) => (
+          <span key={i.id} className="rounded-full bg-white px-3 py-1 text-sm">
+            {i.name}: <b className={i.stock <= 0 ? 'text-rose-600' : 'text-amber-700'}>{Math.round(i.stock * 100) / 100} {i.unit}</b>
+          </span>
+        ))}
+      </div>
     </Card>
   );
 }

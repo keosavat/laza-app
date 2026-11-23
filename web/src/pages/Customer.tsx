@@ -8,7 +8,7 @@ import { OptionModal } from '../components/MenuPicker';
 import { Modal, cx } from '../components/ui';
 
 interface Info { restaurant: string; branch: string; table: string; guestCount: number; canOrder: boolean; autoConfirm: boolean }
-interface PItem { id: number; category_id: number | null; name: string; price: number; image_url: string; options: OptionGroup[] }
+interface PItem { id: number; category_id: number | null; name: string; price: number; image_url: string; options: OptionGroup[]; soldOut: boolean }
 interface Menu { categories: { id: number; name: string }[]; items: PItem[] }
 type State = 'awaiting' | 'pending' | 'preparing' | 'ready' | 'served' | 'cancelled';
 interface MyOrder {
@@ -239,16 +239,16 @@ export default function Customer() {
               <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 pb-28">
                 {items.length === 0 && <div className="py-10 text-center text-sm text-slate-400">ບໍ່ພົບເມນູ</div>}
                 {items.map((it) => (
-                  <button key={it.id} onClick={() => (it.options.length ? setPicking(it) : add(it, [], ''))} className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 p-2 text-left shadow-sm active:scale-[.99]">
+                  <button key={it.id} onClick={() => (it.options.length ? setPicking(it) : add(it, [], ''))} disabled={it.soldOut} className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 p-2 text-left shadow-sm active:scale-[.99] disabled:opacity-50">
                     <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 text-lg font-bold text-slate-300">
                       {it.image_url ? <img src={it.image_url} alt="" className="size-full object-cover" loading="lazy" /> : it.name.slice(0, 2)}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="line-clamp-2 font-medium leading-snug">{it.name}</div>
                       <div className="tabular font-semibold text-brand-700">{kip(it.price)}</div>
-                      {it.options.length > 0 && <div className="text-[11px] text-slate-400">ມີຕົວເລືອກ</div>}
+                      {it.soldOut ? <div className="text-xs font-semibold text-rose-600">ໝົດແລ້ວ</div> : it.options.length > 0 && <div className="text-[11px] text-slate-400">ມີຕົວເລືອກ</div>}
                     </div>
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white"><Plus className="size-5" /></span>
+                    <span className={cx('flex size-9 shrink-0 items-center justify-center rounded-full text-white', it.soldOut ? 'bg-slate-300' : 'bg-brand-600')}><Plus className="size-5" /></span>
                   </button>
                 ))}
               </div>

@@ -15,6 +15,8 @@ export interface OptionGroup { name: string; required: boolean; multiple: boolea
 export interface MenuItem {
   id: number; category_id: number | null; name: string; price: number; cost: number;
   image_url: string; options: OptionGroup[]; active: number; sort: number;
+  /** Portions left from stock; null = no recipe (not tracked). */
+  portions: number | null; cost_from_recipe: number;
 }
 export interface Zone { id: number; name: string; sort: number }
 export interface Table { id: number; zone_id: number | null; name: string; seats: number; sort: number; active: number }
@@ -64,6 +66,20 @@ export interface Printer {
 export interface PrintJob {
   id: number; type: 'kitchen' | 'bill' | 'receipt' | 'test'; title: string; status: 'queued' | 'printing' | 'done' | 'failed';
   attempts: number; error: string; created_at: string; printed_at: string | null; order_id: number | null; printer_name: string;
+}
+export interface Ingredient {
+  id: number; name: string; unit: string; cost: number; stock: number; low_at: number; active: number;
+  low: boolean; out: boolean; value: number; used_in: number;
+}
+export interface StockMove {
+  id: number; ingredient_id: number; ingredient_name: string; unit: string; type: 'in' | 'adjust' | 'waste' | 'sale';
+  qty: number; unit_cost: number; balance: number; note: string; user_name: string | null; created_at: string;
+}
+export interface Recipe {
+  item: { id: number; name: string; price: number; cost: number };
+  costFromRecipe: boolean;
+  recipeCost: number;
+  lines: { ingredientId: number; qty: number; name: string; unit: string; cost: number; stock: number; line_cost: number }[];
 }
 export interface StaffUser { id: number; name: string; username: string; role: Role; active: number; created_at: string }
 

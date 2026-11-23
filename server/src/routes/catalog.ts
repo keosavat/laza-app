@@ -4,6 +4,7 @@ import type { Ctx } from '../app.ts';
 import { requirePerm } from '../auth.ts';
 import { now } from '../db.ts';
 import { bad, bool, int, notFound, str } from '../lib/core.ts';
+import { portionsMap } from '../lib/inventory.ts';
 
 function parseOptions(v: unknown): string {
   if (v === undefined || v === null) return '[]';
@@ -75,7 +76,9 @@ export function catalogRoutes({ db, emit }: Ctx) {
 
   // ----- Menu items -----
   r.get('/menu-items', (req, res) => {
-    res.json(db.all('SELECT * FROM menu_items WHERE branch_id = ? ORDER BY sort, id', req.user.bid).map(itemOut));
+    // `portions`: how many more can be made from stock (null = no recipe, not tracked).
+    const left = portionsMap(db, req.user.bid);
+    res.json(db.all('SELECT * FROM menu_items WHERE branch_id = ? ORDER BY sort, id', req.user.bid).map((r) => ({ ...itemOut(r), portions: left.get(r.id) ?? null })));
   });
   const readItem = (body: any, prev?: any) => {
     const categoryId = body.categoryId === undefined ? prev?.category_id : body.categoryId === null ? null : int(body.categoryId, 'ໝວດ');

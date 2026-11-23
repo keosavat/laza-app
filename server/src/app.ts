@@ -11,6 +11,7 @@ import { orderRoutes } from './routes/orders.ts';
 import { authRoutes, opsRoutes } from './routes/ops.ts';
 import { qrPublicRoutes, qrStaffRoutes } from './routes/qr.ts';
 import { printerRoutes } from './routes/printers.ts';
+import { inventoryRoutes } from './routes/inventory.ts';
 import { createPrintService, type PrintService } from './print/service.ts';
 
 export type Topic = 'orders' | 'tables' | 'kitchen' | 'menu' | 'shift' | 'settings' | 'qr' | 'print';
@@ -90,7 +91,7 @@ export function createApp(opts: AppOptions) {
   app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'LAZA app' }));
   app.use('/api/auth', authRoutes(ctx));
   app.use('/api/public/qr', qrPublicRoutes(ctx));
-  app.use('/api', auth.middleware, customerSync, catalogRoutes(ctx), orderRoutes(ctx), qrStaffRoutes(ctx), printerRoutes(ctx), opsRoutes(ctx));
+  app.use('/api', auth.middleware, customerSync, catalogRoutes(ctx), orderRoutes(ctx), qrStaffRoutes(ctx), printerRoutes(ctx), inventoryRoutes(ctx), opsRoutes(ctx));
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'ບໍ່ພົບ API ນີ້')));
 
   // Serve the built web app (production) with SPA fallback.

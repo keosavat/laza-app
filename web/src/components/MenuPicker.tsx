@@ -71,7 +71,14 @@ export default function MenuPicker({ onAdd }: { onAdd: (item: MenuItem, options:
                 </div>
                 <div className="p-2">
                   <div className="line-clamp-2 min-h-10 text-sm font-medium leading-5">{it.name}</div>
-                  <div className="tabular text-sm font-semibold text-brand-700">{kip(it.price)}</div>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="tabular text-sm font-semibold text-brand-700">{kip(it.price)}</span>
+                    {it.portions !== null && it.portions <= 5 && (
+                      <span className={cx('rounded-full px-1.5 py-0.5 text-[10px] font-semibold', it.portions === 0 ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-800')}>
+                        {it.portions === 0 ? 'ສະຕັອກໝົດ' : `ເຫຼືອ ${it.portions}`}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </button>
             ))}

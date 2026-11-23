@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { Db, Row } from '../db.ts';
 import { now } from '../db.ts';
 import { bad, calcTotals, conflict, notFound, type DiscountType } from './core.ts';
+import { deductForOrder, portionsMap } from './inventory.ts';
 
 export function getBranch(db: Db, bid: number): Row {
   const b = db.get('SELECT * FROM branches WHERE id = ?', bid);
@@ -169,6 +170,18 @@ export function addItems(
       const waiting = db.get("SELECT COALESCE(SUM(qty),0) AS n FROM order_items WHERE order_id = ? AND awaiting = 1 AND status != 'cancelled'", o.id)!.n;
       if (waiting + p.items.reduce((s, i) => s + i.qty, 0) > 60) throw conflict('ມີລາຍການລໍຖ້າພະນັກງານຢືນຢັນຫຼາຍແລ້ວ ກະລຸນາລໍຖ້າ');
     }
+    if (p.source === 'customer') {
+      const left = portionsMap(db, p.bid);
+      const asked = new Map<number, number>();
+      for (const it of p.items) asked.set(it.menuItemId, (asked.get(it.menuItemId) ?? 0) + it.qty);
+      for (const [id, qty] of asked) {
+        const have = left.get(id);
+        if (have !== undefined && have < qty) {
+          const m = db.get('SELECT name FROM menu_items WHERE id = ?', id);
+          throw conflict(have === 0 ? `${m?.name ?? 'ເມນູ'} ໝົດແລ້ວ` : `${m?.name ?? 'ເມນູ'} ເຫຼືອພຽງ ${have} ຈານ`);
+        }
+      }
+    }
     const ts = now();
     const ids: number[] = [];
     for (const it of p.items) {
@@ -257,6 +270,7 @@ export function payOrder(db: Db, p: { bid: number; uid: number; orderId: number;
     );
     // Anything still in the kitchen pipeline is considered served once the bill is paid.
     db.run("UPDATE order_items SET status='served', updated_at=? WHERE order_id=? AND status IN ('pending','preparing','ready')", ts, o.id);
+    deductForOrder(db, p.bid, o.id, p.uid);
     db.audit(p.bid, p.uid, 'pay', 'order', o.id, { total: t.total, paid, change, payments: rows });
     return { billNo, total: t.total, paid, change };
   });

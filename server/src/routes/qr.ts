@@ -4,6 +4,7 @@ import type { Ctx } from '../app.ts';
 import { requirePerm } from '../auth.ts';
 import { now } from '../db.ts';
 import { HttpError, bad, conflict, int, notFound, oneOf, str } from '../lib/core.ts';
+import { portionsMap } from '../lib/inventory.ts';
 import { addItems, getBranch, issueQr, loadOrder, recalc, requireOpen, type NewItem } from '../lib/orders.ts';
 
 // ---------------------------------------------------------------- staff
@@ -166,10 +167,11 @@ export function qrPublicRoutes({ db, emit, emitOrder, print }: Ctx) {
     const b = getBranch(db, o.branch_id);
     if (!b.qr_enabled) throw new HttpError(403, 'ຮ້ານປິດການສັ່ງອາຫານຜ່ານ QR ຊົ່ວຄາວ ກະລຸນາເອີ້ນພະນັກງານ');
     const categories = db.all('SELECT id, name FROM categories WHERE branch_id = ? AND active = 1 ORDER BY sort, id', o.branch_id);
+    const left = portionsMap(db, o.branch_id);
     // Never expose cost or other internal fields to customers.
     const items = db
       .all('SELECT id, category_id, name, price, image_url, options_json FROM menu_items WHERE branch_id = ? AND active = 1 ORDER BY sort, id', o.branch_id)
-      .map((i) => ({ id: i.id, category_id: i.category_id, name: i.name, price: i.price, image_url: i.image_url, options: JSON.parse(i.options_json || '[]') }));
+      .map((i) => ({ id: i.id, category_id: i.category_id, name: i.name, price: i.price, image_url: i.image_url, options: JSON.parse(i.options_json || '[]'), soldOut: left.get(i.id) === 0 }));
     res.json({ categories, items });
   });
 

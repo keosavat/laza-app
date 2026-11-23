@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pencil, Plus, Trash2, ImagePlus, X } from 'lucide-react';
-import { del, get, post, put, type Category, type MenuItem, type OptionGroup, type Printer } from '../lib/api';
+import { del, get, post, put, type Category, type Ingredient, type MenuItem, type OptionGroup, type Printer, type Recipe } from '../lib/api';
 import { useSync } from '../lib/store';
 import { kip } from '../lib/format';
 import { Badge, Button, Card, Empty, Field, Input, Modal, MoneyInput, PageHeader, Select, Spinner, cx, toast, useAction, useLoad } from '../components/ui';
@@ -344,6 +344,81 @@ function ItemModal({ item, cats, onClose, onSaved }: { item: Partial<MenuItem>; 
           ))}
         </div>
       </div>
+      {item.id ? (
+        <RecipeEditor itemId={item.id} price={f.price} onSaved={onSaved} />
+      ) : (
+        <p className="mt-6 rounded-lg bg-slate-50 p-3 text-sm text-slate-500">ບັນທຶກເມນູກ່ອນ ຈຶ່ງຕັ້ງສູດອາຫານ (ວັດຖຸດິບທີ່ຕັດສະຕັອກ) ໄດ້</p>
+      )}
     </Modal>
+  );
+}
+
+/** Recipe: which ingredients (and how much) one portion uses. Saved separately from the item. */
+function RecipeEditor({ itemId, price, onSaved }: { itemId: number; price: number; onSaved: () => void }) {
+  const [data, reloadRecipe, loading] = useLoad(() => get<Recipe>(`/menu-items/${itemId}/recipe`), [itemId]);
+  const [ings] = useLoad(() => get<Ingredient[]>('/ingredients'));
+  const [lines, setLines] = useState<{ ingredientId: number; qty: number }[] | null>(null);
+  const [fromRecipe, setFromRecipe] = useState<boolean | null>(null);
+  const { busy, run } = useAction();
+  if (loading || !data || !ings) return <div className="mt-6 text-sm text-slate-400">ກຳລັງໂຫຼດສູດ...</div>;
+  const cur = lines ?? data.lines.map((l) => ({ ingredientId: l.ingredientId, qty: l.qty }));
+  const useCost = fromRecipe ?? data.costFromRecipe;
+  const byId = new Map(ings.map((i) => [i.id, i]));
+  const cost = Math.round(cur.reduce((s, l) => s + l.qty * (byId.get(l.ingredientId)?.cost ?? 0), 0));
+  const free = ings.filter((i) => i.active && !cur.some((l) => l.ingredientId === i.id));
+  const set = (i: number, patch: Partial<{ ingredientId: number; qty: number }>) => setLines(cur.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  const margin = price ? Math.round(((price - cost) / price) * 100) : 0;
+
+  return (
+    <div className="mt-6 rounded-xl border border-slate-200 p-4">
+      <h3 className="font-semibold">ສູດອາຫານ (ຕັດສະຕັອກອັດຕະໂນມັດເມື່ອຂາຍ)</h3>
+      <p className="mb-3 text-xs text-slate-500">ວັດຖຸດິບທີ່ໃຊ້ຕໍ່ 1 ຈານ. ຖ້າບໍ່ໃສ່ສູດ ເມນູນີ້ຈະບໍ່ຕັດສະຕັອກ.</p>
+      {ings.length === 0 && <p className="text-sm text-amber-700">ຍັງບໍ່ມີວັດຖຸດິບ — ເພີ່ມໄດ້ທີ່ເມນູ ສະຕັອກ</p>}
+      <div className="space-y-2">
+        {cur.map((l, i) => {
+          const ing = byId.get(l.ingredientId);
+          return (
+            <div key={l.ingredientId} className="flex items-center gap-2">
+              <Select value={l.ingredientId} onChange={(e) => set(i, { ingredientId: Number(e.target.value) })} className="w-auto! min-w-0 flex-1">
+                {ing && <option value={ing.id}>{ing.name}</option>}
+                {free.map((o) => (
+                  <option key={o.id} value={o.id}>{o.name}</option>
+                ))}
+              </Select>
+              <Input type="number" min={0} step="any" value={l.qty || ''} onChange={(e) => set(i, { qty: Number(e.target.value) || 0 })} className="w-24! text-right" />
+              <span className="w-14 text-sm text-slate-500">{ing?.unit}</span>
+              <span className="tabular w-24 text-right text-sm text-slate-500">{kip(Math.round(l.qty * (ing?.cost ?? 0)))}</span>
+              <button onClick={() => setLines(cur.filter((_, j) => j !== i))} className="p-1 text-slate-400 hover:text-rose-600" aria-label="ລຶບ">
+                <X className="size-4" />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <Button size="sm" variant="secondary" disabled={!free.length} onClick={() => setLines([...cur, { ingredientId: free[0].id, qty: 1 }])}>
+          <Plus className="size-4" /> ເພີ່ມວັດຖຸດິບ
+        </Button>
+        <span className="ml-auto text-sm">ຕົ້ນທຶນຕາມສູດ <b className="tabular">{kip(cost)}</b> · ກຳໄລ <b className="tabular">{margin}%</b></span>
+      </div>
+      <label className="mt-3 flex items-center gap-2 text-sm">
+        <input type="checkbox" className="size-4 accent-brand-600" checked={useCost} onChange={(e) => setFromRecipe(e.target.checked)} /> ໃຊ້ຕົ້ນທຶນຈາກສູດ (ອັບເດດອັດຕະໂນມັດເມື່ອລາຄາວັດຖຸດິບປ່ຽນ)
+      </label>
+      <Button
+        className="mt-3"
+        loading={busy}
+        disabled={cur.some((l) => !(l.qty > 0))}
+        onClick={async () => {
+          if (await run(() => put(`/menu-items/${itemId}/recipe`, { lines: cur, costFromRecipe: useCost }), 'ບັນທຶກສູດແລ້ວ')) {
+            await reloadRecipe();
+            setLines(null);
+            setFromRecipe(null);
+            onSaved();
+          }
+        }}
+      >
+        ບັນທຶກສູດ
+      </Button>
+    </div>
   );
 }

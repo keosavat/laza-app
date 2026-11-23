@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import {
-  LayoutDashboard, Armchair, ShoppingBag, ChefHat, Receipt, Wallet, UtensilsCrossed, LayoutGrid, Users, Settings, LogOut, Menu as MenuIcon, X, Printer, AlertTriangle,
+  LayoutDashboard, Armchair, ShoppingBag, ChefHat, Receipt, Wallet, UtensilsCrossed, LayoutGrid, Users, Settings, LogOut, Menu as MenuIcon, X, Printer, AlertTriangle, Boxes,
 } from 'lucide-react';
 import { useSession } from '../lib/store';
 import { can, ROLE_LABEL, type Perm } from '../lib/format';
@@ -21,6 +21,7 @@ const NAV: { to: string; label: string; icon: typeof LayoutDashboard; perm: Perm
   { to: '/menu', label: 'ເມນູອາຫານ', icon: UtensilsCrossed, perm: 'admin', group: 'ຈັດການ' },
   { to: '/floor', label: 'ຈັດການໂຕະ', icon: LayoutGrid, perm: 'admin' },
   { to: '/staff', label: 'ພະນັກງານ', icon: Users, perm: 'admin' },
+  { to: '/inventory', label: 'ສະຕັອກ', icon: Boxes, perm: 'admin' },
   { to: '/printers', label: 'ເຄື່ອງພິມ', icon: Printer, perm: 'admin' },
   { to: '/settings', label: 'ຕັ້ງຄ່າ', icon: Settings, perm: 'admin' },
 ];

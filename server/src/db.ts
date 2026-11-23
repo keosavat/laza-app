@@ -204,6 +204,41 @@ function migrate(raw: DatabaseSync) {
   addColumn(raw, 'branches', 'qr_enabled', 'INTEGER NOT NULL DEFAULT 1');
   addColumn(raw, 'branches', 'qr_auto_confirm', 'INTEGER NOT NULL DEFAULT 1');
   addColumn(raw, 'branches', 'public_url', "TEXT NOT NULL DEFAULT ''");
+  // Inventory: ingredients with stock, recipes (menu item → ingredient quantities), and a stock movement log.
+  addColumn(raw, 'menu_items', 'cost_from_recipe', 'INTEGER NOT NULL DEFAULT 0');
+  raw.exec(`
+    CREATE TABLE IF NOT EXISTS ingredients (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      name TEXT NOT NULL,
+      unit TEXT NOT NULL DEFAULT 'ອັນ',
+      cost REAL NOT NULL DEFAULT 0,
+      stock REAL NOT NULL DEFAULT 0,
+      low_at REAL NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS recipe_lines (
+      menu_item_id INTEGER NOT NULL REFERENCES menu_items(id),
+      ingredient_id INTEGER NOT NULL REFERENCES ingredients(id),
+      qty REAL NOT NULL CHECK (qty > 0),
+      PRIMARY KEY (menu_item_id, ingredient_id)
+    );
+    CREATE TABLE IF NOT EXISTS stock_moves (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      ingredient_id INTEGER NOT NULL REFERENCES ingredients(id),
+      type TEXT NOT NULL CHECK (type IN ('in','adjust','waste','sale')),
+      qty REAL NOT NULL,
+      unit_cost REAL NOT NULL DEFAULT 0,
+      balance REAL NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      order_id INTEGER REFERENCES orders(id),
+      user_id INTEGER REFERENCES users(id),
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_stock_moves_ing ON stock_moves(ingredient_id, id);
+  `);
   // Printing: category → kitchen printer routing, auto-print switch.
   addColumn(raw, 'categories', 'printer_id', 'INTEGER');
   addColumn(raw, 'branches', 'auto_kitchen_print', 'INTEGER NOT NULL DEFAULT 1');
