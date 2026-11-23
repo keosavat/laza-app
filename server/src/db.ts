@@ -204,7 +204,44 @@ function migrate(raw: DatabaseSync) {
   addColumn(raw, 'branches', 'qr_enabled', 'INTEGER NOT NULL DEFAULT 1');
   addColumn(raw, 'branches', 'qr_auto_confirm', 'INTEGER NOT NULL DEFAULT 1');
   addColumn(raw, 'branches', 'public_url', "TEXT NOT NULL DEFAULT ''");
+  // Printing: category → kitchen printer routing, auto-print switch.
+  addColumn(raw, 'categories', 'printer_id', 'INTEGER');
+  addColumn(raw, 'branches', 'auto_kitchen_print', 'INTEGER NOT NULL DEFAULT 1');
   raw.exec(`
+    CREATE TABLE IF NOT EXISTS printers (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      name TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('kitchen','bill')),
+      connection TEXT NOT NULL CHECK (connection IN ('lan','usb')),
+      host TEXT NOT NULL DEFAULT '',
+      port INTEGER NOT NULL DEFAULT 9100,
+      system_name TEXT NOT NULL DEFAULT '',
+      paper_mm INTEGER NOT NULL DEFAULT 80 CHECK (paper_mm IN (58,80)),
+      cut INTEGER NOT NULL DEFAULT 1,
+      copies INTEGER NOT NULL DEFAULT 1,
+      active INTEGER NOT NULL DEFAULT 1,
+      last_ok_at TEXT,
+      last_error TEXT NOT NULL DEFAULT '',
+      last_error_at TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS print_jobs (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      printer_id INTEGER NOT NULL REFERENCES printers(id),
+      type TEXT NOT NULL CHECK (type IN ('kitchen','bill','receipt','test')),
+      order_id INTEGER REFERENCES orders(id),
+      title TEXT NOT NULL DEFAULT '',
+      payload_json TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('queued','printing','done','failed')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      error TEXT NOT NULL DEFAULT '',
+      run_after TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      printed_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_print_jobs_due ON print_jobs(status, run_after);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_qr_token ON orders(qr_token) WHERE qr_token IS NOT NULL;
     CREATE TABLE IF NOT EXISTS qr_calls (
       id INTEGER PRIMARY KEY,

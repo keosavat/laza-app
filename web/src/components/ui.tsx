@@ -106,6 +106,7 @@ export function Modal({
   children,
   footer,
   wide,
+  full,
 }: {
   open: boolean;
   onClose: () => void;
@@ -113,6 +114,8 @@ export function Modal({
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /** Large dialog with an unpadded body that manages its own layout (e.g. menu + cart). */
+  full?: boolean;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -123,14 +126,14 @@ export function Modal({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 p-4 sm:pt-[6vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={cx('flex max-h-[92vh] w-full flex-col rounded-2xl bg-white shadow-xl', wide ? 'max-w-3xl' : 'max-w-md')}>
+      <div className={cx('flex max-h-[92vh] w-full flex-col rounded-2xl bg-white shadow-xl', full ? 'max-w-6xl' : wide ? 'max-w-3xl' : 'max-w-md')}>
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button onClick={onClose} className="rounded-lg p-1 text-slate-500 hover:bg-slate-100" aria-label="ປິດ">
             <X className="size-5" />
           </button>
         </div>
-        <div className="overflow-y-auto px-5 py-4">{children}</div>
+        <div className={full ? 'min-h-0 flex-1 overflow-hidden' : 'overflow-y-auto px-5 py-4'}>{children}</div>
         {footer && <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-3">{footer}</div>}
       </div>
     </div>

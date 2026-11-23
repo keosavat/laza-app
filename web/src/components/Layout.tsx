@@ -1,12 +1,15 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import {
-  LayoutDashboard, Armchair, ShoppingBag, ChefHat, Receipt, Wallet, UtensilsCrossed, LayoutGrid, Users, Settings, LogOut, Menu as MenuIcon, X,
+  LayoutDashboard, Armchair, ShoppingBag, ChefHat, Receipt, Wallet, UtensilsCrossed, LayoutGrid, Users, Settings, LogOut, Menu as MenuIcon, X, Printer, AlertTriangle,
 } from 'lucide-react';
 import { useSession } from '../lib/store';
 import { can, ROLE_LABEL, type Perm } from '../lib/format';
 import { cx } from './ui';
 import QrAlerts from './QrAlerts';
+import { get } from '../lib/api';
+import { useSync } from '../lib/store';
+import { useLoad } from './ui';
 
 const NAV: { to: string; label: string; icon: typeof LayoutDashboard; perm: Perm; group?: string }[] = [
   { to: '/', label: 'ພາບລວມ', icon: LayoutDashboard, perm: 'reports' },
@@ -18,6 +21,7 @@ const NAV: { to: string; label: string; icon: typeof LayoutDashboard; perm: Perm
   { to: '/menu', label: 'ເມນູອາຫານ', icon: UtensilsCrossed, perm: 'admin', group: 'ຈັດການ' },
   { to: '/floor', label: 'ຈັດການໂຕະ', icon: LayoutGrid, perm: 'admin' },
   { to: '/staff', label: 'ພະນັກງານ', icon: Users, perm: 'admin' },
+  { to: '/printers', label: 'ເຄື່ອງພິມ', icon: Printer, perm: 'admin' },
   { to: '/settings', label: 'ຕັ້ງຄ່າ', icon: Settings, perm: 'admin' },
 ];
 
@@ -55,6 +59,7 @@ export default function Layout() {
         ))}
       </div>
       <div className="border-t border-slate-800 p-3">
+        <PrintAlert onOpen={() => nav('/printers')} canOpen={can(user?.role, 'admin')} />
         <button
           onClick={() => nav('/shift')}
           className={cx('mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs', shift ? 'bg-emerald-900/50 text-emerald-300' : 'bg-amber-900/40 text-amber-300')}
@@ -99,5 +104,23 @@ export default function Layout() {
         <QrAlerts />
       </div>
     </div>
+  );
+}
+
+/** Red chip when a printer is failing or tickets could not be printed. */
+function PrintAlert({ onOpen, canOpen }: { onOpen: () => void; canOpen: boolean }) {
+  const role = useSession((s) => s.user?.role);
+  const [s, reload] = useLoad(
+    () => (can(role, 'kitchen') ? get<{ failed: number; problems: { id: number; name: string }[] }>('/print/status') : Promise.resolve({ failed: 0, problems: [] })),
+    [role],
+  );
+  useSync(['print'], reload);
+  if (!s || (!s.failed && !s.problems.length)) return null;
+  const text = s.problems.length ? `ເຄື່ອງພິມ ${s.problems.map((p) => p.name).join(', ')} ມີບັນຫາ` : `ພິມບໍ່ສຳເລັດ ${s.failed} ງານ`;
+  return (
+    <button onClick={canOpen ? onOpen : undefined} className="mb-2 flex w-full items-center gap-2 rounded-lg bg-rose-900/60 px-3 py-2 text-left text-xs text-rose-200">
+      <AlertTriangle className="size-4 shrink-0" />
+      {text}
+    </button>
   );
 }

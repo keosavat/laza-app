@@ -26,16 +26,25 @@ export function catalogRoutes({ db, emit }: Ctx) {
   const r = Router();
 
   // ----- Categories -----
+  /** Which kitchen/bar printer gets this category's tickets (null = the default kitchen printer). */
+  const kitchenPrinter = (bid: number, v: unknown, prev: number | null = null): number | null => {
+    if (v === undefined) return prev;
+    if (v === null || v === '' || v === 0) return null;
+    const id = int(v, 'ເຄື່ອງພິມ');
+    if (!db.get("SELECT 1 FROM printers WHERE id = ? AND branch_id = ? AND role = 'kitchen'", id, bid)) throw bad('ເລືອກໄດ້ສະເພາະເຄື່ອງພິມຄົວ/ບາ');
+    return id;
+  };
   r.get('/categories', (req, res) => {
     res.json(db.all('SELECT * FROM categories WHERE branch_id = ? ORDER BY sort, id', req.user.bid));
   });
   r.post('/categories', requirePerm('admin'), (req, res) => {
     const { id } = db.run(
-      'INSERT INTO categories (branch_id, name, sort, active) VALUES (?,?,?,?)',
+      'INSERT INTO categories (branch_id, name, sort, active, printer_id) VALUES (?,?,?,?,?)',
       req.user.bid,
       str(req.body.name, 'ຊື່ໝວດ', { required: true, max: 80 }),
       int(req.body.sort, 'ລຳດັບ'),
       req.body.active === undefined ? 1 : bool(req.body.active),
+      kitchenPrinter(req.user.bid, req.body.printerId),
     );
     emit(req.user.bid, ['menu']);
     res.status(201).json(db.get('SELECT * FROM categories WHERE id = ?', id));
@@ -44,10 +53,11 @@ export function catalogRoutes({ db, emit }: Ctx) {
     const c = db.get('SELECT * FROM categories WHERE id = ? AND branch_id = ?', int(req.params.id, 'id'), req.user.bid);
     if (!c) throw notFound();
     db.run(
-      'UPDATE categories SET name=?, sort=?, active=? WHERE id=?',
+      'UPDATE categories SET name=?, sort=?, active=?, printer_id=? WHERE id=?',
       str(req.body.name ?? c.name, 'ຊື່ໝວດ', { required: true, max: 80 }),
       int(req.body.sort ?? c.sort, 'ລຳດັບ'),
       req.body.active === undefined ? c.active : bool(req.body.active),
+      kitchenPrinter(req.user.bid, req.body.printerId, c.printer_id),
       c.id,
     );
     emit(req.user.bid, ['menu']);

@@ -8,6 +8,8 @@ interface Session {
   branch: Branch | null;
   restaurant: Restaurant | null;
   shift: Shift | null;
+  /** Which kinds of server-side printers this branch has (otherwise we fall back to browser printing). */
+  printers: { kitchen: boolean; bill: boolean };
   ready: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
@@ -31,6 +33,7 @@ export const useSession = create<Session>((set, getState) => ({
   branch: null,
   restaurant: null,
   shift: null,
+  printers: { kitchen: false, bill: false },
   ready: false,
   async login(username, password) {
     const r = await post<{ token: string; user: User }>('/auth/login', { username, password });
@@ -48,7 +51,7 @@ export const useSession = create<Session>((set, getState) => ({
     const token = tokenStore.get();
     if (!token) return set({ ready: true });
     try {
-      const me = await get<{ user: User; branch: Branch; restaurant: Restaurant; shift: Shift | null }>('/me');
+      const me = await get<{ user: User; branch: Branch; restaurant: Restaurant; shift: Shift | null; printers: { kitchen: boolean; bill: boolean } }>('/me');
       if (!socket) connectSocket(token);
       set({ ...me, ready: true });
     } catch {

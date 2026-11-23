@@ -58,9 +58,9 @@ export default function Checkout({ order, onClose, onPaid }: { order: Order; onC
     if (problem) return toast.err(problem);
     setBusy(true);
     try {
-      const r = await post<{ order: Order; change: number }>(`/orders/${order.id}/pay`, { payments: all });
+      const r = await post<{ order: Order; change: number; printedByServer: boolean }>(`/orders/${order.id}/pay`, { payments: all, print: printIt });
       device.autoReceiptPrint = printIt;
-      if (printIt) printReceipt(r.order, restaurant!, branch!, user!.name);
+      if (printIt && !r.printedByServer) printReceipt(r.order, restaurant!, branch!, user!.name);
       toast.ok(r.change ? `ຊຳລະແລ້ວ · ທອນ ${kip(r.change)}` : 'ຊຳລະແລ້ວ');
       onPaid(r.order);
     } catch (e) {

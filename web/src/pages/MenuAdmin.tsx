@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pencil, Plus, Trash2, ImagePlus, X } from 'lucide-react';
-import { del, get, post, put, type Category, type MenuItem, type OptionGroup } from '../lib/api';
+import { del, get, post, put, type Category, type MenuItem, type OptionGroup, type Printer } from '../lib/api';
 import { useSync } from '../lib/store';
 import { kip } from '../lib/format';
 import { Badge, Button, Card, Empty, Field, Input, Modal, MoneyInput, PageHeader, Select, Spinner, cx, toast, useAction, useLoad } from '../components/ui';
@@ -141,9 +141,11 @@ function CategoryModal({ cat, onClose, onSaved }: { cat: Partial<Category>; onCl
   const [name, setName] = useState(cat.name ?? '');
   const [sort, setSort] = useState(cat.sort ?? 0);
   const [active, setActive] = useState(cat.active !== 0);
+  const [printerId, setPrinterId] = useState<number | null>(cat.printer_id ?? null);
+  const [printers] = useLoad(() => get<Printer[]>('/printers'));
   const { busy, run } = useAction();
   const save = async () => {
-    const body = { name, sort, active };
+    const body = { name, sort, active, printerId };
     const r = await run(() => (cat.id ? put(`/categories/${cat.id}`, body) : post('/categories', body)), 'ບັນທຶກແລ້ວ');
     if (r) {
       onSaved();
@@ -186,6 +188,14 @@ function CategoryModal({ cat, onClose, onSaved }: { cat: Partial<Category>; onCl
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="size-4 accent-brand-600" /> ສະແດງໃນໜ້າຂາຍ
         </label>
+        <Field label="ສົ່ງໃບສັ່ງໄປເຄື່ອງພິມ" hint="ເຊັ່ນ ເຄື່ອງດື່ມ → ບາ, ອາຫານ → ຄົວ">
+          <Select value={printerId ?? ''} onChange={(e) => setPrinterId(e.target.value ? Number(e.target.value) : null)}>
+            <option value="">ເຄື່ອງພິມຄົວຫຼັກ (ຄ່າເລີ່ມຕົ້ນ)</option>
+            {(printers ?? []).filter((p) => p.role === 'kitchen').map((p) => (
+              <option key={p.id} value={p.id}>{p.name}{p.active ? '' : ' (ປິດ)'}</option>
+            ))}
+          </Select>
+        </Field>
       </div>
     </Modal>
   );

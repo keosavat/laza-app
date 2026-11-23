@@ -10,8 +10,10 @@ import { catalogRoutes } from './routes/catalog.ts';
 import { orderRoutes } from './routes/orders.ts';
 import { authRoutes, opsRoutes } from './routes/ops.ts';
 import { qrPublicRoutes, qrStaffRoutes } from './routes/qr.ts';
+import { printerRoutes } from './routes/printers.ts';
+import { createPrintService, type PrintService } from './print/service.ts';
 
-export type Topic = 'orders' | 'tables' | 'kitchen' | 'menu' | 'shift' | 'settings' | 'qr';
+export type Topic = 'orders' | 'tables' | 'kitchen' | 'menu' | 'shift' | 'settings' | 'qr' | 'print';
 
 export interface Ctx {
   db: Db;
@@ -20,6 +22,8 @@ export interface Ctx {
   emit: (branchId: number, topics: Topic[]) => void;
   /** Tell the customers who scanned an order's QR code to refetch. */
   emitOrder: (orderId: number) => void;
+  /** Server-side printing to LAN/USB thermal printers. */
+  print: PrintService;
 }
 
 export interface AppOptions {
@@ -54,10 +58,12 @@ export function createApp(opts: AppOptions) {
     }
   });
 
+  const emit = (bid: number, topics: Topic[]) => void io.to(`branch:${bid}`).emit('sync', { topics });
   const ctx: Ctx = {
     db,
     auth,
-    emit: (bid, topics) => io.to(`branch:${bid}`).emit('sync', { topics }),
+    emit,
+    print: createPrintService(db, emit),
     emitOrder: (orderId) => {
       const o = db.get('SELECT qr_token FROM orders WHERE id = ?', orderId);
       if (o?.qr_token) io.to(`qr:${o.qr_token}`).emit('sync');
@@ -84,7 +90,7 @@ export function createApp(opts: AppOptions) {
   app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'LAZA app' }));
   app.use('/api/auth', authRoutes(ctx));
   app.use('/api/public/qr', qrPublicRoutes(ctx));
-  app.use('/api', auth.middleware, customerSync, catalogRoutes(ctx), orderRoutes(ctx), qrStaffRoutes(ctx), opsRoutes(ctx));
+  app.use('/api', auth.middleware, customerSync, catalogRoutes(ctx), orderRoutes(ctx), qrStaffRoutes(ctx), printerRoutes(ctx), opsRoutes(ctx));
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'ບໍ່ພົບ API ນີ້')));
 
   // Serve the built web app (production) with SPA fallback.
@@ -102,5 +108,5 @@ export function createApp(opts: AppOptions) {
     res.status(500).json({ error: 'ເກີດຂໍ້ຜິດພາດໃນລະບົບ' });
   });
 
-  return { app, server, io, db, ctx };
+  return { app, server, io, db, ctx, print: ctx.print };
 }

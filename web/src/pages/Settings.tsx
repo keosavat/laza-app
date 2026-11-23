@@ -96,7 +96,7 @@ export default function SettingsPage() {
         )}
       </Card>
       <Card className="space-y-3 p-5">
-        <h2 className="font-semibold">ເຄື່ອງພິມ (ສະເພາະເຄື່ອງນີ້)</h2>
+        <h2 className="font-semibold">ພິມຜ່ານ browser (ສຳຮອງ · ສະເພາະເຄື່ອງນີ້)</h2>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" className="size-4 accent-brand-600" checked={kitchenPrint} onChange={(e) => { setKitchenPrint(e.target.checked); device.autoKitchenPrint = e.target.checked; }} />
           ພິມໃບສັ່ງຄົວອັດຕະໂນມັດ ເມື່ອກົດ "ສົ່ງຄົວ"
@@ -106,7 +106,7 @@ export default function SettingsPage() {
           ພິມໃບຮັບເງິນອັດຕະໂນມັດຫຼັງຊຳລະ
         </label>
         <p className="text-xs text-slate-500">
-          ໃຊ້ເຄື່ອງພິມໃບບິນ 80mm ທີ່ຕັ້ງເປັນເຄື່ອງພິມຫຼັກຂອງ Windows. ເພື່ອພິມທັນທີບໍ່ຕ້ອງກົດຢືນຢັນ ໃຫ້ເປີດ Chrome ດ້ວຍ --kiosk-printing.
+          ໃຊ້ເມື່ອຍັງບໍ່ໄດ້ຕັ້ງເຄື່ອງພິມໃນໜ້າ <b>ເຄື່ອງພິມ</b> (ແນະນຳໃຫ້ຕັ້ງ ເພື່ອໃຫ້ເຊີບເວີພິມແຍກຄົວ/ບາ/ໜ້າຮ້ານ ອັດຕະໂນມັດ). ໂໝດນີ້ພິມໄດ້ແຕ່ເຄື່ອງພິມຫຼັກຂອງ Windows ຜ່ານໜ້າຕ່າງພິມ.
         </p>
       </Card>
     </div>

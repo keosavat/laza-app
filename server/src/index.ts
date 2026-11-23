@@ -17,12 +17,13 @@ function loadSecret(): string {
   return fs.readFileSync(file, 'utf8').trim();
 }
 
-const { server, db } = createApp({
+const { server, db, print } = createApp({
   dbFile: process.env.LAZA_DB ?? path.join(dataDir, 'laza.db'),
   jwtSecret: loadSecret(),
   webDist: path.join(root, '..', 'web', 'dist'),
 });
 
+print.start();
 if (seedIfEmpty(db)) console.log('First run: demo restaurant created (see README for demo logins).');
 
 const port = Number(process.env.PORT ?? 4000);

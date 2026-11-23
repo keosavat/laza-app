@@ -1,23 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRightLeft, Ban, Check, Minus, Percent, Plus, Printer, QrCode, Send, Trash2, Wallet, ChefHat, X } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, Ban, Check, Percent, Printer, QrCode, Send, Wallet, ChefHat, X } from 'lucide-react';
 import QrModal from '../components/QrModal';
 import { get, post, type Order, type OrderItem, type FloorTable, type ItemStatus } from '../lib/api';
 import { useSession, useSync } from '../lib/store';
 import { can, dateTime, kip, since, STATUS_CLASS, STATUS_LABEL, time } from '../lib/format';
 import { device } from '../lib/device';
 import { printBill, printKitchenTicket } from '../lib/print';
-import MenuPicker, { lineKey, linePrice, type CartLine } from '../components/MenuPicker';
+import MenuPicker, { type CartLine } from '../components/MenuPicker';
+import { CartLines, useCart } from '../components/Cart';
 import Checkout from '../components/Checkout';
 import { Badge, Button, Field, Input, Modal, MoneyInput, Select, Spinner, cx, toast, useAction, useLoad } from '../components/ui';
 
 export default function OrderScreen() {
   const { id } = useParams();
   const nav = useNavigate();
-  const { user, branch, restaurant } = useSession();
+  const { user, branch, restaurant, printers } = useSession();
   const role = user!.role;
   const [order, reload, loading] = useLoad(() => get<Order>(`/orders/${id}`), [id]);
-  const [cart, setCart] = useState<CartLine[]>([]);
+  const cartState = useCart();
+  const cart = cartState.cart;
   const [modal, setModal] = useState<null | 'discount' | 'transfer' | 'checkout' | 'cancel' | 'qr' | 'bulkcancel'>(null);
   const [voiding, setVoiding] = useState<OrderItem | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
@@ -53,26 +55,24 @@ export default function OrderScreen() {
   const selectable = closed || !can(role, 'kitchen') ? [] : order.items.filter((i) => i.status !== 'cancelled' && !i.awaiting);
 
   const add = (item: CartLine['item'], options: CartLine['options'], note: string) => {
-    if (closed) return;
-    const key = lineKey(item.id, options, note);
-    setCart((c) => (c.some((l) => l.key === key) ? c.map((l) => (l.key === key ? { ...l, qty: l.qty + 1 } : l)) : [...c, { key, item, options, note, qty: 1 }]));
+    if (!closed) cartState.add(item, options, note);
   };
-  const bump = (key: string, d: number) => setCart((c) => c.map((l) => (l.key === key ? { ...l, qty: l.qty + d } : l)).filter((l) => l.qty > 0));
-  const cartTotal = cart.reduce((s, l) => s + linePrice(l) * l.qty, 0);
-  const cartQty = cart.reduce((s, l) => s + l.qty, 0);
+  const cartTotal = cartState.total;
+  const cartQty = cartState.qty;
 
   /** Send the cart to the kitchen. Returns the updated order (or undefined on failure). */
   async function send(): Promise<Order | undefined> {
     if (!cart.length) return order;
     const r = await run(() =>
-      post<{ itemIds: number[]; order: Order }>(`/orders/${order!.id}/items`, {
-        items: cart.map((l) => ({ menuItemId: l.item.id, qty: l.qty, options: l.options, note: l.note })),
+      post<{ itemIds: number[]; order: Order; printedByServer: boolean }>(`/orders/${order!.id}/items`, {
+        items: cartState.payload(),
       }),
     );
     if (!r) return undefined;
-    setCart([]);
-    if (device.autoKitchenPrint) printKitchenTicket(r.order, r.order.items.filter((i) => r.itemIds.includes(i.id)), user!.name);
-    toast.ok(`ສົ່ງເຂົ້າຄົວແລ້ວ ${r.itemIds.length} ລາຍການ`);
+    cartState.clear();
+    // Server prints to the kitchen printers when configured; otherwise fall back to this device's browser printing.
+    if (!r.printedByServer && !printers.kitchen && device.autoKitchenPrint) printKitchenTicket(r.order, r.order.items.filter((i) => r.itemIds.includes(i.id)), user!.name);
+    toast.ok(`ສົ່ງເຂົ້າຄົວແລ້ວ ${r.itemIds.length} ລາຍການ${r.printedByServer ? ' · ກຳລັງພິມ' : ''}`);
     reload();
     return r.order;
   }
@@ -93,8 +93,12 @@ export default function OrderScreen() {
     }
   }
   const setStatus = (status: ItemStatus) => setStatusFor(selected, status);
+  async function reprintLines(ids: number[]) {
+    if (!printers.kitchen) return printKitchenTicket(order!, order!.items.filter((i) => ids.includes(i.id)), user!.name);
+    await run(() => post(`/orders/${order!.id}/print/kitchen`, { itemIds: ids }), 'ສົ່ງພິມໃບຄົວແລ້ວ');
+  }
   const reprint = () => {
-    printKitchenTicket(order!, order!.items.filter((i) => selected.includes(i.id)), user!.name);
+    reprintLines(selected);
     setSelected([]);
   };
 
@@ -110,8 +114,9 @@ export default function OrderScreen() {
   async function doPrintBill() {
     const o = await send();
     if (!o) return;
-    const r = await run(() => post<Order>(`/orders/${order!.id}/print-bill`));
-    if (r) printBill(r, restaurant!, branch!);
+    const r = await run(() => post<Order & { printedByServer: boolean }>(`/orders/${order!.id}/print-bill`));
+    if (r?.printedByServer) toast.ok('ສົ່ງພິມບິນແລ້ວ');
+    else if (r) printBill(r, restaurant!, branch!);
     reload();
   }
 
@@ -234,7 +239,7 @@ export default function OrderScreen() {
                       canVoid={!closed && canPick && can(role, 'voidItem')}
                       canStatus={!closed && canPick && can(role, 'kitchen')}
                       onStatus={(s) => setStatusFor([it.id], s)}
-                      onReprint={() => printKitchenTicket(order, [it], user!.name)}
+                      onReprint={() => reprintLines([it.id])}
                       onVoid={() => setVoiding(it)}
                     />
                   )}
@@ -246,20 +251,7 @@ export default function OrderScreen() {
         {cart.length > 0 && (
           <div className="border-t-4 border-dashed border-brand-200 bg-brand-50/50">
             <div className="px-3 pt-2 text-xs font-semibold text-brand-700">ລາຍການໃໝ່ (ຍັງບໍ່ສົ່ງ)</div>
-            {cart.map((l) => (
-              <div key={l.key} className="flex items-center gap-2 px-3 py-2">
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium">{l.item.name}</div>
-                  <Extras options={l.options.map((o) => o.name)} note={l.note} />
-                  <div className="tabular text-xs text-slate-500">{kip(linePrice(l))}</div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <IconBtn onClick={() => bump(l.key, -1)} label="ລົດ">{l.qty === 1 ? <Trash2 className="size-4 text-rose-600" /> : <Minus className="size-4" />}</IconBtn>
-                  <span className="tabular w-7 text-center font-semibold">{l.qty}</span>
-                  <IconBtn onClick={() => bump(l.key, 1)} label="ເພີ່ມ"><Plus className="size-4" /></IconBtn>
-                </div>
-              </div>
-            ))}
+            <CartLines cart={cartState} compact />
           </div>
         )}
       </div>
@@ -491,13 +483,6 @@ function Line({ label, value, className }: { label: string; value: number; class
       <span>{label}</span>
       <span className="tabular">{kip(value)}</span>
     </div>
-  );
-}
-function IconBtn({ onClick, label, children }: { onClick: () => void; label: string; children: React.ReactNode }) {
-  return (
-    <button onClick={onClick} aria-label={label} className="flex size-8 items-center justify-center rounded-lg border border-slate-300 bg-white hover:bg-slate-50">
-      {children}
-    </button>
   );
 }
 function ActionBtn({ icon: Icon, label, onClick, disabled, danger, highlight }: { icon: typeof Printer; label: string; onClick: () => void; disabled?: boolean; danger?: boolean; highlight?: boolean }) {

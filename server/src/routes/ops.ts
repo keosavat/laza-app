@@ -21,13 +21,19 @@ export function authRoutes({ db, auth }: Ctx) {
   return r;
 }
 
-export function opsRoutes({ db, emit }: Ctx) {
+export function opsRoutes({ db, emit, print }: Ctx) {
   const r = Router();
 
   r.get('/me', (req, res) => {
     const b = getBranch(db, req.user.bid);
     const rest = db.get('SELECT * FROM restaurants WHERE id = ?', req.user.rid);
-    res.json({ user: req.user, branch: b, restaurant: rest, shift: currentShift(db, req.user.bid) ?? null });
+    res.json({
+      user: req.user,
+      branch: b,
+      restaurant: rest,
+      shift: currentShift(db, req.user.bid) ?? null,
+      printers: { kitchen: print.hasPrinter(req.user.bid, 'kitchen'), bill: print.hasPrinter(req.user.bid, 'bill') },
+    });
   });
 
   // ----- Shifts -----
@@ -241,7 +247,7 @@ export function opsRoutes({ db, emit }: Ctx) {
       }
       db.run(
         `UPDATE branches SET name=?, address=?, phone=?, vat_rate=?, service_rate=?, rate_usd=?, rate_thb=?, receipt_header=?, receipt_footer=?, bank_info=?,
-           qr_enabled=?, qr_auto_confirm=?, public_url=? WHERE id=?`,
+           qr_enabled=?, qr_auto_confirm=?, public_url=?, auto_kitchen_print=? WHERE id=?`,
         pick('name', b.name, (x) => str(x, 'ຊື່ສາຂາ', { required: true, max: 120 })),
         pick('address', b.address, (x) => str(x, 'ທີ່ຢູ່', { max: 300 })),
         pick('phone', b.phone, (x) => str(x, 'ເບີໂທ', { max: 60 })),
@@ -259,6 +265,7 @@ export function opsRoutes({ db, emit }: Ctx) {
           if (u && !/^https?:\/\/[^\s/]+(:\d+)?$/i.test(u)) throw bad('ທີ່ຢູ່ເວັບຕ້ອງຂຶ້ນຕົ້ນດ້ວຍ http:// ຫຼື https:// ເຊັ່ນ http://192.168.1.10:4000');
           return u;
         }),
+        pick('auto_kitchen_print', b.auto_kitchen_print, (x) => (x ? 1 : 0)),
         b.id,
       );
       db.audit(req.user.bid, req.user.uid, 'update', 'settings', b.id, v);

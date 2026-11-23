@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { Printer } from 'lucide-react';
-import { get, type Order, type OrderRow } from '../lib/api';
+import { get, post, type Order, type OrderRow } from '../lib/api';
 import { useSession, useSync } from '../lib/store';
 import { dateTime, kip, METHOD_LABEL, STATUS_LABEL, todayLocal } from '../lib/format';
 import { printReceipt } from '../lib/print';
 import { Badge, Button, Card, Empty, Input, Modal, PageHeader, Select, Spinner, cx, toast, useLoad } from '../components/ui';
 
 export default function Orders() {
-  const { restaurant, branch, user } = useSession();
+  const { restaurant, branch, user, printers } = useSession();
   const [date, setDate] = useState(todayLocal());
   const [status, setStatus] = useState<'paid' | 'cancelled' | 'open'>('paid');
   const [rows, reload, loading] = useLoad(() => get<OrderRow[]>(`/orders?status=${status}${status === 'open' ? '' : `&date=${date}`}`), [date, status]);
@@ -82,7 +82,18 @@ export default function Orders() {
           title={`${detail.bill_no ?? 'ອໍເດີ'} #${detail.order_no}`}
           footer={
             detail.status === 'paid' && (
-              <Button variant="secondary" onClick={() => printReceipt(detail, restaurant!, branch!, user!.name)}>
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  if (!printers.bill) return printReceipt(detail, restaurant!, branch!, user!.name);
+                  try {
+                    await post(`/orders/${detail.id}/print/receipt`);
+                    toast.ok('ສົ່ງພິມໃບຮັບເງິນແລ້ວ');
+                  } catch (e) {
+                    toast.err(e);
+                  }
+                }}
+              >
                 <Printer className="size-4" /> ພິມໃບຮັບເງິນຊ້ຳ
               </Button>
             )

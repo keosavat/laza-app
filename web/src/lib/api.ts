@@ -7,10 +7,10 @@ export interface Branch {
   id: number; name: string; address: string; phone: string;
   vat_rate: number; service_rate: number; rate_usd: number; rate_thb: number;
   receipt_header: string; receipt_footer: string; bank_info: string; utc_offset_min: number;
-  qr_enabled: number; qr_auto_confirm: number; public_url: string;
+  qr_enabled: number; qr_auto_confirm: number; public_url: string; auto_kitchen_print: number;
 }
 export interface Restaurant { id: number; name: string }
-export interface Category { id: number; name: string; sort: number; active: number }
+export interface Category { id: number; name: string; sort: number; active: number; printer_id: number | null }
 export interface OptionGroup { name: string; required: boolean; multiple: boolean; choices: { name: string; price: number }[] }
 export interface MenuItem {
   id: number; category_id: number | null; name: string; price: number; cost: number;
@@ -55,6 +55,15 @@ export interface CurrentShift extends Shift { summary: ShiftSummary; openOrders:
 export interface KitchenItem {
   id: number; order_id: number; name: string; qty: number; options: ChosenOption[]; note: string; status: ItemStatus;
   created_at: string; order_no: string; type: 'dine_in' | 'takeaway'; queue_no: number | null; table_name: string | null; created_by_name: string;
+}
+export interface Printer {
+  id: number; name: string; role: 'kitchen' | 'bill'; connection: 'lan' | 'usb'; host: string; port: number; system_name: string;
+  paper_mm: 58 | 80; cut: number; copies: number; active: number; last_ok_at: string | null; last_error: string; last_error_at: string | null;
+  queued?: number; failed?: number;
+}
+export interface PrintJob {
+  id: number; type: 'kitchen' | 'bill' | 'receipt' | 'test'; title: string; status: 'queued' | 'printing' | 'done' | 'failed';
+  attempts: number; error: string; created_at: string; printed_at: string | null; order_id: number | null; printer_name: string;
 }
 export interface StaffUser { id: number; name: string; username: string; role: Role; active: number; created_at: string }
 

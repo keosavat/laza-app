@@ -8,7 +8,7 @@ import { addItems, getBranch, issueQr, loadOrder, recalc, requireOpen, type NewI
 
 // ---------------------------------------------------------------- staff
 
-export function qrStaffRoutes({ db, emit }: Ctx) {
+export function qrStaffRoutes({ db, emit, print }: Ctx) {
   const r = Router();
   const touch = (bid: number) => emit(bid, ['orders', 'tables', 'kitchen', 'qr']);
 
@@ -41,10 +41,12 @@ export function qrStaffRoutes({ db, emit }: Ctx) {
       recalc(db, o.id);
       db.run('UPDATE orders SET bill_printed_at = NULL WHERE id = ?', o.id);
       db.audit(req.user.bid, req.user.uid, 'approve_items', 'order', o.id, { itemIds: pick });
-      return pick.length;
+      return pick;
     });
+    // Approved customer items now go to the kitchen like any staff order.
+    if (n.length && getBranch(db, req.user.bid).auto_kitchen_print) print.kitchen(req.user.bid, o.id, n);
     touch(req.user.bid);
-    res.json({ approved: n });
+    res.json({ approved: n.length });
   });
 
   r.post('/orders/:id/reject', requirePerm('pos'), (req, res) => {
@@ -123,7 +125,7 @@ const CLOSED_TEXT: Record<string, string> = {
   expired: 'QR ນີ້ໝົດເວລາແລ້ວ ກະລຸນາຖາມພະນັກງານ',
 };
 
-export function qrPublicRoutes({ db, emit, emitOrder }: Ctx) {
+export function qrPublicRoutes({ db, emit, emitOrder, print }: Ctx) {
   const r = Router();
   const orderLimit = limiter(10, 60_000);
   const callLimit = limiter(4, 60_000);
@@ -187,6 +189,7 @@ export function qrPublicRoutes({ db, emit, emitOrder }: Ctx) {
     }));
     const awaiting = !b.qr_auto_confirm;
     const ids = addItems(db, { bid: o.branch_id, uid: null, orderId: o.id, items, source: 'customer', awaiting });
+    if (!awaiting && b.auto_kitchen_print) print.kitchen(o.branch_id, o.id, ids);
     emit(o.branch_id, ['orders', 'tables', 'kitchen', 'qr']);
     emitOrder(o.id);
     res.status(201).json({ itemIds: ids, awaiting });

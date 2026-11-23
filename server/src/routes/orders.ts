@@ -7,7 +7,9 @@ import { addItems, createOrder, getBranch, issueQr, loadOrder, orderDetail, payO
 
 const ITEM_FLOW = ['pending', 'preparing', 'ready', 'served'] as const;
 
-export function orderRoutes({ db, emit }: Ctx) {
+export function orderRoutes({ db, emit, print }: Ctx) {
+  /** Kitchen tickets go out automatically unless the branch switched it off. */
+  const autoKitchen = (bid: number) => !!getBranch(db, bid).auto_kitchen_print;
   const r = Router();
   const changed = (bid: number) => emit(bid, ['orders', 'tables', 'kitchen']);
 
@@ -104,8 +106,11 @@ export function orderRoutes({ db, emit }: Ctx) {
     }));
     const orderId = int(req.params.id, 'id');
     const ids = addItems(db, { bid: req.user.bid, uid: req.user.uid, orderId, items });
+    // print: true = "order & print to kitchen", false = order only, omitted = follow the branch auto-print setting.
+    const wantPrint = req.body.print === undefined ? autoKitchen(req.user.bid) : req.body.print === true;
+    const tickets = wantPrint ? print.kitchen(req.user.bid, orderId, ids) : 0;
     changed(req.user.bid);
-    res.status(201).json({ itemIds: ids, order: orderDetail(db, orderId, req.user.bid) });
+    res.status(201).json({ itemIds: ids, printedByServer: tickets > 0, order: orderDetail(db, orderId, req.user.bid) });
   });
 
   r.post('/orders/:id/discount', requirePerm('discount'), (req, res) => {
@@ -139,8 +144,9 @@ export function orderRoutes({ db, emit }: Ctx) {
     const o = loadOrder(db, int(req.params.id, 'id'), req.user.bid);
     requireOpen(o);
     db.run('UPDATE orders SET bill_printed_at=? WHERE id=?', now(), o.id);
+    const tickets = print.bill(req.user.bid, o.id);
     changed(req.user.bid);
-    res.json(orderDetail(db, o.id, req.user.bid));
+    res.json({ ...orderDetail(db, o.id, req.user.bid), printedByServer: tickets > 0 });
   });
 
   r.post('/orders/:id/pay', requirePerm('pay'), (req, res) => {
@@ -152,8 +158,9 @@ export function orderRoutes({ db, emit }: Ctx) {
     }));
     const orderId = int(req.params.id, 'id');
     const result = payOrder(db, { bid: req.user.bid, uid: req.user.uid, orderId, payments });
+    const tickets = req.body.print ? print.receipt(req.user.bid, orderId) : 0;
     changed(req.user.bid);
-    res.json({ ...result, order: orderDetail(db, orderId, req.user.bid) });
+    res.json({ ...result, printedByServer: tickets > 0, order: orderDetail(db, orderId, req.user.bid) });
   });
 
   r.post('/orders/:id/cancel', requirePerm('pos'), (req, res) => {

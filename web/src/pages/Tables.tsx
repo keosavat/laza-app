@@ -5,6 +5,7 @@ import { get, post, type FloorTable, type Order, type Zone } from '../lib/api';
 import { useSession, useSync } from '../lib/store';
 import { kip, since } from '../lib/format';
 import { DURATIONS } from '../components/QrModal';
+import TablePanel from '../components/TablePanel';
 import { Button, Empty, Field, Input, Modal, PageHeader, Select, Spinner, cx, toast, useLoad } from '../components/ui';
 
 type Filter = 'all' | 'free' | 'busy' | 'bill';
@@ -16,12 +17,18 @@ export default function Tables() {
   const [zone, setZone] = useState<number | 'all'>('all');
   const [filter, setFilter] = useState<Filter>('all');
   const [openFor, setOpenFor] = useState<FloorTable | null>(null);
+  const [panel, setPanel] = useState<number | null>(null); // order id shown in the side panel
   const [, tick] = useState(0);
   useSync(['tables', 'orders'], reload);
   useEffect(() => {
     const t = setInterval(() => tick((x) => x + 1), 30_000);
     return () => clearInterval(t);
   }, []);
+
+  // Close the panel when its table gets paid/cancelled elsewhere.
+  useEffect(() => {
+    if (panel && data && !data.tables.some((t) => t.order_id === panel)) setPanel(null);
+  }, [data, panel]);
 
   if (loading || !data) return <Spinner />;
   const tables = data.tables.filter((t) => zone === 'all' || t.zone_id === zone);
@@ -36,7 +43,8 @@ export default function Tables() {
   );
 
   function open(t: FloorTable) {
-    if (t.order_id) return nav(`/order/${t.order_id}`);
+    // Wide screens: show the order beside the floor plan (like a POS). Phones/tablets: open the full order screen.
+    if (t.order_id) return window.innerWidth >= 1024 ? setPanel(panel === t.order_id ? null : t.order_id) : nav(`/order/${t.order_id}`);
     if (!shift) {
       toast.err('ຍັງບໍ່ໄດ້ເປີດກະ: ໃຫ້ແຄັດເຊຍ ຫຼື ຜູ້ຈັດການເປີດກະກ່ອນ');
       return;
@@ -52,7 +60,8 @@ export default function Tables() {
   ];
 
   return (
-    <div className="p-4 lg:p-6">
+    <div className={cx('p-4 lg:p-6', !!panel && 'lg:grid lg:grid-cols-[1fr_420px] lg:items-start lg:gap-4')}>
+      <div className="min-w-0">
       <PageHeader
         title="ໂຕະ"
         sub={`ມີລູກຄ້າ ${counts.busy} / ${counts.all} ໂຕະ`}
@@ -82,7 +91,7 @@ export default function Tables() {
       {shown.length === 0 ? (
         <Empty>ບໍ່ມີໂຕະ — ເພີ່ມໂຕະໄດ້ທີ່ ຈັດການໂຕະ</Empty>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
+        <div className={cx('grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4', panel ? 'xl:grid-cols-4' : 'xl:grid-cols-6')}>
           {shown.map((t) => {
             const busy = !!t.order_id;
             return (
@@ -91,6 +100,7 @@ export default function Tables() {
                 onClick={() => open(t)}
                 className={cx(
                   'flex min-h-28 flex-col justify-between rounded-xl border-2 p-3 text-left shadow-sm transition active:scale-[.98]',
+                  busy && t.order_id === panel && 'ring-4 ring-brand-300 ring-offset-1',
                   !busy && 'border-slate-200 bg-white hover:border-brand-500',
                   busy && !t.bill_printed_at && 'border-brand-600 bg-brand-600 text-white',
                   busy && t.bill_printed_at && 'border-amber-500 bg-amber-500 text-white',
@@ -127,6 +137,8 @@ export default function Tables() {
           })}
         </div>
       )}
+      </div>
+      {panel && <TablePanel orderId={panel} onClose={() => setPanel(null)} />}
       {openFor && <OpenTableModal table={openFor} onClose={() => setOpenFor(null)} onFail={reload} />}
     </div>
   );
