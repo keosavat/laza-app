@@ -1,0 +1,108 @@
+// Customers with credit accounts ("ລູກໜີ້"): list, create, ledger and repayments.
+import { Router } from 'express';
+import type { Ctx } from '../app.ts';
+import { can, requirePerm } from '../auth.ts';
+import { now } from '../db.ts';
+import { bad, int, notFound, num, oneOf, str } from '../lib/core.ts';
+import { balanceOf, getCustomer } from '../lib/debts.ts';
+import { requireShift } from '../lib/orders.ts';
+
+export function debtRoutes({ db, emit }: Ctx) {
+  const r = Router();
+  const changed = (bid: number) => emit(bid, ['shift', 'orders']);
+
+  const withBalance = (c: any) => ({ ...c, balance: balanceOf(db, c.id) });
+
+  r.get('/customers', requirePerm('pay'), (req, res) => {
+    const q = req.query.q ? `%${String(req.query.q).trim().toLowerCase()}%` : null;
+    const rows = db
+      .all(
+        `SELECT c.*, COALESCE((SELECT SUM(CASE WHEN e.type = 'charge' THEN e.amount ELSE -e.amount END) FROM debt_entries e WHERE e.customer_id = c.id), 0) AS balance,
+                (SELECT MAX(e.created_at) FROM debt_entries e WHERE e.customer_id = c.id) AS last_entry
+           FROM customers c WHERE c.branch_id = ? ${q ? 'AND (LOWER(c.name) LIKE ? OR c.phone LIKE ?)' : ''} ORDER BY c.active DESC, balance DESC, c.name`,
+        req.user.bid,
+        ...(q ? [q, q] : []),
+      );
+    res.json(rows);
+  });
+
+  r.get('/debts/summary', requirePerm('pay'), (req, res) => {
+    const rows = db
+      .all(
+        `SELECT c.id, c.name, c.phone, c.credit_limit,
+                COALESCE(SUM(CASE WHEN e.type = 'charge' THEN e.amount ELSE -e.amount END), 0) AS balance
+           FROM customers c LEFT JOIN debt_entries e ON e.customer_id = c.id WHERE c.branch_id = ? GROUP BY c.id HAVING balance > 0 ORDER BY balance DESC`,
+        req.user.bid,
+      );
+    res.json({ total: rows.reduce((s, x) => s + x.balance, 0), count: rows.length, top: rows.slice(0, 5) });
+  });
+
+  const read = (b: any, prev: any, admin: boolean) => ({
+    name: str(b.name ?? prev?.name, 'ຊື່ລູກຄ້າ', { required: true, max: 80 }),
+    phone: str(b.phone ?? prev?.phone ?? '', 'ເບີໂທ', { max: 30 }),
+    note: str(b.note ?? prev?.note ?? '', 'ໝາຍເຫດ', { max: 200 }),
+    // Only managers set the credit limit; a cashier creating a customer on the spot gets "no limit set" (0).
+    credit_limit: admin ? num(b.creditLimit ?? prev?.credit_limit ?? 0, 'ວົງເງິນ', { min: 0, max: 1e12 }) : prev?.credit_limit ?? 0,
+    active: b.active === undefined ? (prev?.active ?? 1) : b.active ? 1 : 0,
+  });
+
+  r.post('/customers', requirePerm('pay'), (req, res) => {
+    const v = read(req.body ?? {}, undefined, can(req.user.role, 'admin'));
+    if (v.phone && db.get('SELECT 1 FROM customers WHERE branch_id = ? AND phone = ?', req.user.bid, v.phone)) throw bad('ເບີໂທນີ້ມີໃນລະບົບແລ້ວ');
+    const { id } = db.run('INSERT INTO customers (branch_id, name, phone, note, credit_limit, active, created_at) VALUES (?,?,?,?,?,?,?)', req.user.bid, v.name, v.phone, v.note, v.credit_limit, v.active, now());
+    db.audit(req.user.bid, req.user.uid, 'create', 'customer', id, { name: v.name });
+    res.status(201).json(withBalance(db.get('SELECT * FROM customers WHERE id = ?', id)));
+  });
+
+  r.put('/customers/:id', requirePerm('admin'), (req, res) => {
+    const prev = getCustomer(db, int(req.params.id, 'id'), req.user.bid);
+    const v = read(req.body ?? {}, prev, true);
+    if (v.phone && db.get('SELECT 1 FROM customers WHERE branch_id = ? AND phone = ? AND id != ?', req.user.bid, v.phone, prev.id)) throw bad('ເບີໂທນີ້ມີໃນລະບົບແລ້ວ');
+    db.run('UPDATE customers SET name=?, phone=?, note=?, credit_limit=?, active=? WHERE id=?', v.name, v.phone, v.note, v.credit_limit, v.active, prev.id);
+    db.audit(req.user.bid, req.user.uid, 'update', 'customer', prev.id, { name: v.name, creditLimit: v.credit_limit, active: v.active });
+    res.json(withBalance(db.get('SELECT * FROM customers WHERE id = ?', prev.id)));
+  });
+
+  r.delete('/customers/:id', requirePerm('admin'), (req, res) => {
+    const c = getCustomer(db, int(req.params.id, 'id'), req.user.bid);
+    if (balanceOf(db, c.id) > 0) throw bad('ລູກຄ້ານີ້ຍັງມີໜີ້ຄ້າງ — ຕ້ອງຮັບຊຳລະໃຫ້ຄົບກ່ອນ');
+    const used = db.get('SELECT 1 FROM debt_entries WHERE customer_id = ? LIMIT 1', c.id);
+    if (used) db.run('UPDATE customers SET active = 0 WHERE id = ?', c.id);
+    else db.run('DELETE FROM customers WHERE id = ?', c.id);
+    db.audit(req.user.bid, req.user.uid, 'delete', 'customer', c.id, { name: c.name });
+    res.json({ deleted: !used, deactivated: !!used });
+  });
+
+  r.get('/customers/:id', requirePerm('pay'), (req, res) => {
+    const c = getCustomer(db, int(req.params.id, 'id'), req.user.bid);
+    const entries = db.all(
+      `SELECT e.*, o.bill_no, o.order_no, u.name AS user_name FROM debt_entries e LEFT JOIN orders o ON o.id = e.order_id LEFT JOIN users u ON u.id = e.user_id
+        WHERE e.customer_id = ? ORDER BY e.id DESC LIMIT 200`,
+      c.id,
+    );
+    res.json({ customer: withBalance(c), entries });
+  });
+
+  /** A customer pays back some or all of what they owe. Cash lands in the drawer of the open shift. */
+  r.post('/customers/:id/payments', requirePerm('pay'), (req, res) => {
+    const c = getCustomer(db, int(req.params.id, 'id'), req.user.bid);
+    const method = oneOf(req.body.method ?? 'cash', 'ວິທີຊຳລະ', ['cash', 'transfer', 'qr', 'card'] as const);
+    const amount = Math.round(num(req.body.amount, 'ຈຳນວນເງິນ', { min: 1, max: 1e12 }));
+    const note = str(req.body.note, 'ໝາຍເຫດ', { max: 200 });
+    const balance = db.tx(() => {
+      const shift = requireShift(db, req.user.bid);
+      const bal = balanceOf(db, c.id);
+      if (amount > bal) throw bad(`ຮັບຊຳລະເກີນໜີ້ຄ້າງ (${bal.toLocaleString('en-US')} ກີບ)`);
+      db.run(
+        "INSERT INTO debt_entries (branch_id, customer_id, type, amount, order_id, method, shift_id, note, user_id, created_at) VALUES (?,?,'payment',?,NULL,?,?,?,?,?)",
+        req.user.bid, c.id, amount, method, shift.id, note, req.user.uid, now(),
+      );
+      db.audit(req.user.bid, req.user.uid, 'debt_payment', 'customer', c.id, { amount, method, name: c.name });
+      return bal - amount;
+    });
+    changed(req.user.bid);
+    res.status(201).json({ balance });
+  });
+
+  return r;
+}

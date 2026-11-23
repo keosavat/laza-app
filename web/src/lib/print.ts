@@ -126,7 +126,7 @@ export function printReceipt(order: Order, rest: Restaurant, branch: Branch, cas
      <div class="s">ບິນ ${esc(order.bill_no ?? '')} · ອໍເດີ #${esc(order.order_no)}</div>
      <div class="s">${dateTime(order.paid_at)} · ${esc(cashier)}</div><hr>
      <table>${itemsTable(order)}</table><hr>${totalsBlock(order)}<hr>
-     <table>${pays}${order.change_lak ? `<tr class="b"><td>ເງິນທອນ</td><td class="r">${kip(order.change_lak)}</td></tr>` : ''}</table>
+     <table>${pays}${order.debt_amount ? `<tr class="b"><td>ຕິດໜີ້</td><td class="r">${kip(order.debt_amount)}</td></tr>` : ''}${order.change_lak ? `<tr class="b"><td>ເງິນທອນ</td><td class="r">${kip(order.change_lak)}</td></tr>` : ''}</table>
      <hr><div class="c">${esc(branch.receipt_footer || '')}</div><div class="c s">Powered by LAZA app</div>`,
   );
 }

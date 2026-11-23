@@ -15,6 +15,7 @@ export interface DocOrder {
   vat: number;
   total: number;
   change_lak: number;
+  debt_amount?: number;
   guest_count: number;
   items: {
     id: number;
@@ -137,6 +138,7 @@ export function receiptDoc(o: DocOrder, shop: Shop, cashier: string): Block[] {
     right: kip(p.amount_lak),
     size: 'm',
   }));
+  if (o.debt_amount) pays.push({ t: 'row', left: 'ຕິດໜີ້', right: kip(o.debt_amount), size: 'm', bold: true });
   if (o.change_lak) pays.push({ t: 'row', left: 'ເງິນທອນ', right: kip(o.change_lak), size: 'm', bold: true });
   return [
     ...head(shop),

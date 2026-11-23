@@ -10,6 +10,7 @@ interface Daily {
   date: string;
   totals: { bills: number; sales: number; subtotal: number; discount: number; service: number; vat: number; avg: number; change: number; cost: number; grossProfit: number };
   byMethod: { method: PayMethod; bills: number; amount_lak: number }[];
+  debt: { charged: number; collected: number; outstanding: number };
   topItems: { name: string; qty: number; amount: number }[];
   byCategory: { name: string; qty: number; amount: number }[];
   byStaff: { name: string; bills: number; amount: number }[];
@@ -73,10 +74,19 @@ export default function Dashboard() {
                   <span className="tabular font-medium">{kip(m.amount_lak)}</span>
                 </div>
               ))}
+              {d.debt.charged > 0 && (
+                <div className="flex justify-between text-rose-600"><span>ຕິດໜີ້ (ຍັງບໍ່ໄດ້ເກັບ)</span><span className="tabular">{kip(d.debt.charged)}</span></div>
+              )}
               <div className="flex justify-between border-t border-slate-100 pt-2 text-slate-500">
                 <span>ທອນເງິນ</span>
                 <span className="tabular">−{kip(t.change)}</span>
               </div>
+            </div>
+          )}
+          {(d.debt.outstanding > 0 || d.debt.collected > 0) && (
+            <div className="mt-4 space-y-1 rounded-lg bg-rose-50 p-3 text-sm">
+              <div className="flex justify-between"><span>ຮັບຊຳລະໜີ້ເກົ່າວັນນີ້</span><span className="tabular">{kip(d.debt.collected)}</span></div>
+              <div className="flex justify-between font-semibold text-rose-700"><span>ໜີ້ຄ້າງລວມ</span><span className="tabular">{kip(d.debt.outstanding)}</span></div>
             </div>
           )}
           <h3 className="mb-2 mt-5 font-semibold">ພາສີ ແລະ ສ່ວນຫຼຸດ</h3>

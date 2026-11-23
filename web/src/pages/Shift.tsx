@@ -70,6 +70,8 @@ export default function ShiftPage() {
             <h2 className="text-lg font-semibold">ສະຫຼຸບກະປັດຈຸບັນ</h2>
             <Stat l="ຈຳນວນບິນ" v={String(s!.bills)} />
             <Stat l="ຍອດຂາຍ" v={kip(s!.salesTotal)} />
+            {!!s!.debtCharged && <Stat l="ໃນນີ້ຕິດໜີ້ (ຍັງບໍ່ໄດ້ເກັບ)" v={kip(s!.debtCharged)} />}
+            {!!s!.debtCollected && <Stat l="ຮັບຊຳລະໜີ້ເກົ່າ" v={kip(s!.debtCollected)} />}
             <div className="border-t border-slate-100 pt-2 text-sm font-semibold text-slate-600">ແຍກຕາມວິທີຊຳລະ</div>
             {s!.byMethod.length === 0 && <div className="text-sm text-slate-400">ຍັງບໍ່ມີການຊຳລະ</div>}
             {s!.byMethod.map((m) => (

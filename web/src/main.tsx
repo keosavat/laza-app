@@ -23,6 +23,7 @@ import Printers from './pages/Printers';
 import Inventory from './pages/Inventory';
 import AuditLog from './pages/AuditLog';
 import Promotions from './pages/Promotions';
+import Debts from './pages/Debts';
 
 function Guard({ perm, children }: { perm: Perm; children: React.ReactElement }) {
   const role = useSession((s) => s.user?.role);
@@ -61,6 +62,7 @@ function App() {
         <Route path="staff" element={<Guard perm="admin"><Staff /></Guard>} />
         <Route path="settings" element={<Guard perm="admin"><SettingsPage /></Guard>} />
         <Route path="inventory" element={<Guard perm="admin"><Inventory /></Guard>} />
+        <Route path="debts" element={<Guard perm="pay"><Debts /></Guard>} />
         <Route path="promotions" element={<Guard perm="admin"><Promotions /></Guard>} />
         <Route path="audit" element={<Guard perm="admin"><AuditLog /></Guard>} />
         <Route path="printers" element={<Guard perm="admin"><Printers /></Guard>} />

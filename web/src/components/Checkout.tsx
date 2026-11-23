@@ -6,6 +6,7 @@ import { kip, METHOD_LABEL } from '../lib/format';
 import { device } from '../lib/device';
 import { printReceipt } from '../lib/print';
 import { Button, Modal, cx, toast } from './ui';
+import CustomerPicker, { type Customer } from './CustomerPicker';
 
 interface Line { method: PayMethod; currency: Currency; amount: number }
 const METHODS: { id: PayMethod; icon: typeof Banknote }[] = [
@@ -25,17 +26,21 @@ export default function Checkout({ order, onClose, onPaid }: { order: Order; onC
   const [entry, setEntry] = useState('');
   const [printIt, setPrintIt] = useState(device.autoReceiptPrint);
   const [busy, setBusy] = useState(false);
+  const [onCredit, setOnCredit] = useState(false);
+  const [customer, setCustomer] = useState<Customer | null>(null);
 
   const paidLak = lines.reduce((s, l) => s + Math.round(l.amount * rate(l.currency)), 0);
   const remaining = Math.max(order.total - paidLak, 0);
   const remainingIn = (c: Currency) => (c === 'LAK' ? remaining : Math.ceil((remaining / rate(c)) * 100) / 100);
   const entryAmount = entry === '' ? remainingIn(currency) : Number(entry);
-  const pending: Line | null = remaining > 0 && entryAmount > 0 ? { method, currency, amount: entryAmount } : null;
+  // On credit: the amount typed is what is paid now; the rest goes on the customer's account.
+  const pending: Line | null = remaining > 0 && entryAmount > 0 && (!onCredit || entry !== '') ? { method, currency, amount: entryAmount } : null;
   const all = pending ? [...lines, pending] : lines;
   const totalLak = all.reduce((s, l) => s + Math.round(l.amount * rate(l.currency)), 0);
   const cashLak = all.filter((l) => l.method === 'cash').reduce((s, l) => s + Math.round(l.amount * rate(l.currency)), 0);
-  const change = totalLak - order.total;
-  const problem = totalLak < order.total ? `ຍັງຂາດ ${kip(order.total - totalLak)}` : change > cashLak ? 'ເງິນທອນໄດ້ສະເພາະເງິນສົດ' : '';
+  const debtLak = onCredit ? Math.max(order.total - totalLak, 0) : 0;
+  const change = totalLak - (order.total - debtLak);
+  const problem = onCredit && debtLak > 0 && !customer ? 'ກະລຸນາເລືອກລູກຄ້າທີ່ຕິດໜີ້' : totalLak < order.total && !onCredit ? `ຍັງຂາດ ${kip(order.total - totalLak)}` : change > cashLak ? 'ເງິນທອນໄດ້ສະເພາະເງິນສົດ' : '';
 
   const quick = useMemo(() => {
     if (currency !== 'LAK') return [];
@@ -58,7 +63,7 @@ export default function Checkout({ order, onClose, onPaid }: { order: Order; onC
     if (problem) return toast.err(problem);
     setBusy(true);
     try {
-      const r = await post<{ order: Order; change: number; printedByServer: boolean }>(`/orders/${order.id}/pay`, { payments: all, print: printIt });
+      const r = await post<{ order: Order; change: number; printedByServer: boolean }>(`/orders/${order.id}/pay`, { payments: all, print: printIt, ...(debtLak > 0 && customer ? { debt: { customerId: customer.id, amount: debtLak } } : {}) });
       device.autoReceiptPrint = printIt;
       if (printIt && !r.printedByServer) printReceipt(r.order, restaurant!, branch!, user!.name);
       toast.ok(r.change ? `ຊຳລະແລ້ວ · ທອນ ${kip(r.change)}` : 'ຊຳລະແລ້ວ');
@@ -122,6 +127,18 @@ export default function Checkout({ order, onClose, onPaid }: { order: Order; onC
               ))}
             </div>
           )}
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" checked={onCredit} onChange={(e) => { setOnCredit(e.target.checked); setEntry(''); }} className="size-4 accent-brand-600" />
+              ຕິດໜີ້ (ຈ່າຍພາຍຫຼັງ)
+            </label>
+            {onCredit && (
+              <>
+                <CustomerPicker value={customer} onPick={setCustomer} />
+                <p className="text-xs text-slate-500">ໃສ່ຍອດທີ່ຈ່າຍຕອນນີ້ (ຖ້າມີ) ແລ້ວກົດ "ແຍກຈ່າຍ"; ສ່ວນທີ່ເຫຼືອຈະຕິດໜີ້ລູກຄ້າ.</p>
+              </>
+            )}
+          </div>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={printIt} onChange={(e) => setPrintIt(e.target.checked)} className="size-4 accent-brand-600" />
             ພິມໃບຮັບເງິນ
@@ -159,11 +176,12 @@ export default function Checkout({ order, onClose, onPaid }: { order: Order; onC
           </Button>
           <div className="space-y-1 rounded-lg bg-slate-50 p-3 text-sm">
             <Row label="ຮັບເງິນລວມ" value={kip(totalLak)} />
+            {debtLak > 0 && <Row label="ຕິດໜີ້" value={kip(debtLak)} strong />}
             <Row label="ເງິນທອນ" value={kip(Math.max(change, 0))} strong />
             {problem && <div className="text-rose-600">{problem}</div>}
           </div>
           <Button size="lg" className="w-full" onClick={pay} loading={busy} disabled={!!problem}>
-            ຢືນຢັນການຊຳລະ
+            {debtLak > 0 ? 'ຢືນຢັນ (ຕິດໜີ້)' : 'ຢືນຢັນການຊຳລະ'}
           </Button>
         </div>
       </div>

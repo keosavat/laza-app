@@ -4,6 +4,7 @@ import { now } from '../db.ts';
 import { bad, calcTotals, conflict, notFound, type DiscountType } from './core.ts';
 import { deductForOrder, portionsMap } from './inventory.ts';
 import { promoDiscount } from './promos.ts';
+import { chargeDebt } from './debts.ts';
 
 export function getBranch(db: Db, bid: number): Row {
   const b = db.get('SELECT * FROM branches WHERE id = ?', bid);
@@ -234,8 +235,9 @@ export interface PaymentInput {
   amount: number;
 }
 
-export function payOrder(db: Db, p: { bid: number; uid: number; orderId: number; payments: PaymentInput[] }) {
-  if (!p.payments.length) throw bad('ກະລຸນາເລືອກວິທີຊຳລະ');
+export function payOrder(db: Db, p: { bid: number; uid: number; orderId: number; payments: PaymentInput[]; debt?: { customerId: number; amount: number } | null }) {
+  const debtAmt = p.debt ? Math.round(p.debt.amount) : 0;
+  if (!p.payments.length && !(debtAmt > 0)) throw bad('ກະລຸນາເລືອກວິທີຊຳລະ');
   return db.tx(() => {
     const shift = requireShift(db, p.bid);
     const o = loadOrder(db, p.orderId, p.bid);
@@ -250,8 +252,10 @@ export function payOrder(db: Db, p: { bid: number; uid: number; orderId: number;
     const rows = p.payments.map((x) => ({ ...x, rate: rateOf(x.currency), amount_lak: Math.round(x.amount * rateOf(x.currency)) }));
     const paid = rows.reduce((s, x) => s + x.amount_lak, 0);
     const cash = rows.filter((x) => x.method === 'cash').reduce((s, x) => s + x.amount_lak, 0);
-    if (paid < t.total) throw bad(`ຍອດຊຳລະບໍ່ພໍ: ຂາດອີກ ${(t.total - paid).toLocaleString('en-US')} ກີບ`);
-    const change = paid - t.total;
+    if (debtAmt > t.total) throw bad('ຍອດຕິດໜີ້ເກີນຍອດບິນ');
+    const due = t.total - debtAmt;
+    if (paid < due) throw bad(`ຍອດຊຳລະບໍ່ພໍ: ຂາດອີກ ${(due - paid).toLocaleString('en-US')} ກີບ`);
+    const change = paid - due;
     if (change > cash) throw bad('ເງິນທອນໄດ້ສະເພາະການຈ່າຍເງິນສົດ: ຍອດໂອນ/QR/ບັດ ເກີນຍອດບິນ');
     const ts = now();
     for (const x of rows) {
@@ -267,22 +271,25 @@ export function payOrder(db: Db, p: { bid: number; uid: number; orderId: number;
         ts,
       );
     }
+    if (debtAmt > 0) chargeDebt(db, { bid: p.bid, uid: p.uid, customerId: p.debt!.customerId, orderId: o.id, amount: debtAmt });
     const billNo = 'B' + String(nextSeq(db, p.bid, 'bill_seq')).padStart(6, '0');
     db.run(
-      "UPDATE orders SET status='paid', bill_no=?, paid_total=?, change_lak=?, paid_at=?, paid_by=?, updated_at=? WHERE id=?",
+      "UPDATE orders SET status='paid', bill_no=?, paid_total=?, change_lak=?, paid_at=?, paid_by=?, updated_at=?, debt_customer_id=?, debt_amount=? WHERE id=?",
       billNo,
       paid,
       change,
       ts,
       p.uid,
       ts,
+      debtAmt > 0 ? p.debt!.customerId : null,
+      debtAmt,
       o.id,
     );
     // Anything still in the kitchen pipeline is considered served once the bill is paid.
     db.run("UPDATE order_items SET status='served', updated_at=? WHERE order_id=? AND status IN ('pending','preparing','ready')", ts, o.id);
     deductForOrder(db, p.bid, o.id, p.uid);
     if (o.promo_id) db.run('UPDATE promotions SET used_count = used_count + 1 WHERE id = ?', o.promo_id);
-    db.audit(p.bid, p.uid, 'pay', 'order', o.id, { total: t.total, paid, change, payments: rows });
+    db.audit(p.bid, p.uid, 'pay', 'order', o.id, { total: t.total, paid, change, debt: debtAmt || undefined, payments: rows });
     return { billNo, total: t.total, paid, change };
   });
 }
@@ -304,7 +311,13 @@ export function issueQr(db: Db, p: { bid: number; uid: number; orderId: number; 
 /** Expected cash in drawer (LAK) for a shift: opening float + cash received − change given. */
 export function shiftCash(db: Db, shiftId: number) {
   const s = db.get('SELECT opening_cash FROM shifts WHERE id = ?', shiftId)!;
-  const cashIn = db.get("SELECT COALESCE(SUM(amount_lak),0) AS v FROM payments WHERE shift_id = ? AND method = 'cash'", shiftId)!.v;
+  // Debt repayments taken in this shift: cash goes into the drawer, other methods do not.
+  const debtCollected = db.get(
+    "SELECT COALESCE(SUM(amount),0) AS v, COALESCE(SUM(CASE WHEN method = 'cash' THEN amount ELSE 0 END),0) AS cash FROM debt_entries WHERE shift_id = ? AND type = 'payment'",
+    shiftId,
+  )!;
+  const debtCharged = db.get('SELECT COALESCE(SUM(o.debt_amount),0) AS v FROM orders o WHERE o.id IN (SELECT DISTINCT order_id FROM payments WHERE shift_id = ?)', shiftId)!.v;
+  const cashIn = db.get("SELECT COALESCE(SUM(amount_lak),0) AS v FROM payments WHERE shift_id = ? AND method = 'cash'", shiftId)!.v + debtCollected.cash;
   const change = db.get(
     "SELECT COALESCE(SUM(o.change_lak),0) AS v FROM orders o WHERE o.id IN (SELECT DISTINCT order_id FROM payments WHERE shift_id = ?)",
     shiftId,
@@ -317,5 +330,5 @@ export function shiftCash(db: Db, shiftId: number) {
     'SELECT COUNT(*) AS bills, COALESCE(SUM(total),0) AS total FROM orders WHERE id IN (SELECT DISTINCT order_id FROM payments WHERE shift_id = ?)',
     shiftId,
   )!;
-  return { openingCash: s.opening_cash, cashIn, change, expectedCash: s.opening_cash + cashIn - change, byMethod, bills: sales.bills, salesTotal: sales.total };
+  return { debtCharged, debtCollected: debtCollected.v, openingCash: s.opening_cash, cashIn, change, expectedCash: s.opening_cash + cashIn - change, byMethod, bills: sales.bills, salesTotal: sales.total };
 }

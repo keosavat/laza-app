@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import {
-  LayoutDashboard, Armchair, ShoppingBag, ChefHat, Receipt, Wallet, UtensilsCrossed, LayoutGrid, Users, Settings, LogOut, Menu as MenuIcon, X, Printer, AlertTriangle, Boxes, ScrollText, Tag,
+  LayoutDashboard, Armchair, ShoppingBag, ChefHat, Receipt, Wallet, UtensilsCrossed, LayoutGrid, Users, Settings, LogOut, Menu as MenuIcon, X, Printer, AlertTriangle, Boxes, ScrollText, Tag, HandCoins,
 } from 'lucide-react';
 import { useSession } from '../lib/store';
 import { can, ROLE_LABEL, type Perm } from '../lib/format';
@@ -17,6 +17,7 @@ const NAV: { to: string; label: string; icon: typeof LayoutDashboard; perm: Perm
   { to: '/takeaway', label: 'ຂາຍໜ້າຮ້ານ / ກັບບ້ານ', icon: ShoppingBag, perm: 'pos' },
   { to: '/kitchen', label: 'ຄົວ', icon: ChefHat, perm: 'kitchen' },
   { to: '/orders', label: 'ປະຫວັດບິນ', icon: Receipt, perm: 'reports' },
+  { to: '/debts', label: 'ລູກໜີ້', icon: HandCoins, perm: 'pay' },
   { to: '/shift', label: 'ກະ ແລະ ລິ້ນຊັກເງິນ', icon: Wallet, perm: 'shift' },
   { to: '/menu', label: 'ເມນູອາຫານ', icon: UtensilsCrossed, perm: 'admin', group: 'ຈັດການ' },
   { to: '/floor', label: 'ຈັດການໂຕະ', icon: LayoutGrid, perm: 'admin' },

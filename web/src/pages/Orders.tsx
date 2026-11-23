@@ -124,6 +124,7 @@ export default function Orders() {
               {detail.payments.map((p) => (
                 <Row key={p.id} l={`${METHOD_LABEL[p.method]}${p.currency !== 'LAK' ? ` (${p.currency} ${p.amount})` : ''}`} v={p.amount_lak} />
               ))}
+              {!!detail.debt_amount && <Row l="ຕິດໜີ້" v={detail.debt_amount} />}
               {detail.change_lak > 0 && <Row l="ເງິນທອນ" v={detail.change_lak} />}
             </div>
           </div>

@@ -37,12 +37,13 @@ const ACTION: Record<string, [string, string, boolean]> = {
   stock_in: ['ຮັບສະຕັອກ', 'bg-emerald-100 text-emerald-800', false],
   stock_adjust: ['ນັບສະຕັອກ', 'bg-sky-100 text-sky-800', false],
   stock_waste: ['ຕັດເສຍຫາຍ', 'bg-rose-100 text-rose-700', true],
+  debt_payment: ['ຮັບຊຳລະໜີ້', 'bg-emerald-100 text-emerald-800', false],
   promo: ['ໃຊ້ໂປຣໂມຊັນ', 'bg-amber-100 text-amber-800', false],
   promo_remove: ['ເອົາໂປຣອອກ', 'bg-amber-100 text-amber-800', true],
   recipe: ['ແກ້ສູດອາຫານ', 'bg-sky-100 text-sky-800', false],
 };
 const ENTITY: Record<string, string> = {
-  order: 'ອໍເດີ', order_item: 'ລາຍການ', menu_item: 'ເມນູ', ingredient: 'ວັດຖຸດິບ', user: 'ພະນັກງານ', shift: 'ກະ', promotion: 'ໂປຣໂມຊັນ', settings: 'ຕັ້ງຄ່າ', printer: 'ເຄື່ອງພິມ',
+  order: 'ອໍເດີ', order_item: 'ລາຍການ', menu_item: 'ເມນູ', ingredient: 'ວັດຖຸດິບ', user: 'ພະນັກງານ', shift: 'ກະ', promotion: 'ໂປຣໂມຊັນ', customer: 'ລູກຄ້າ', settings: 'ຕັ້ງຄ່າ', printer: 'ເຄື່ອງພິມ',
 };
 
 /** One-line human summary of the stored JSON. */

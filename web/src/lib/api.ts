@@ -38,7 +38,7 @@ export interface Payment { id: number; method: PayMethod; currency: Currency; am
 export interface Order {
   id: number; order_no: string; bill_no: string | null; type: 'dine_in' | 'takeaway'; table_id: number | null; table_name: string | null;
   queue_no: number | null; status: 'open' | 'paid' | 'cancelled'; customer_name: string; note: string;
-  discount_type: 'none' | 'percent' | 'amount'; discount_value: number; promo_id?: number | null; promo_name?: string;
+  discount_type: 'none' | 'percent' | 'amount'; discount_value: number; promo_id?: number | null; promo_name?: string; debt_amount?: number; debt_customer_id?: number | null;
   subtotal: number; discount: number; service: number; vat: number; total: number; paid_total: number; change_lak: number;
   created_at: string; paid_at: string | null; bill_printed_at: string | null; created_by_name?: string;
   qr_token: string | null; qr_expires_at: string | null; guest_count: number;
@@ -50,7 +50,7 @@ export interface Shift {
   closed_at: string | null; counted_cash: number | null; expected_cash: number | null; note: string; closed_by_name?: string;
 }
 export interface ShiftSummary {
-  openingCash: number; cashIn: number; change: number; expectedCash: number; bills: number; salesTotal: number;
+  openingCash: number; cashIn: number; debtCharged?: number; debtCollected?: number; change: number; expectedCash: number; bills: number; salesTotal: number;
   byMethod: { method: PayMethod; currency: Currency; amount: number; amount_lak: number; n: number }[];
 }
 export interface CurrentShift extends Shift { summary: ShiftSummary; openOrders: { n: number; total: number } }

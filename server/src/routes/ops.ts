@@ -115,6 +115,14 @@ export function opsRoutes({ db, emit, print }: Ctx) {
       bid, start, end,
     );
     const change = db.get(`SELECT COALESCE(SUM(change_lak),0) AS v FROM orders o WHERE ${paidIn}`, bid, start, end)!.v;
+    const debt = {
+      charged: db.get(`SELECT COALESCE(SUM(debt_amount),0) AS v FROM orders o WHERE ${paidIn}`, bid, start, end)!.v,
+      collected: db.get("SELECT COALESCE(SUM(amount),0) AS v FROM debt_entries WHERE branch_id = ? AND type = 'payment' AND created_at >= ? AND created_at < ?", bid, start, end)!.v,
+      outstanding: db.get(
+        "SELECT COALESCE(SUM(CASE WHEN type = 'charge' THEN amount ELSE -amount END),0) AS v FROM debt_entries WHERE branch_id = ?",
+        bid,
+      )!.v,
+    };
     const items = db.all(
       `SELECT oi.name, oi.category_id, SUM(oi.qty) AS qty, SUM(oi.qty * oi.unit_price) AS amount, SUM(oi.qty * oi.unit_cost) AS cost
          FROM order_items oi JOIN orders o ON o.id = oi.order_id
@@ -163,6 +171,7 @@ export function opsRoutes({ db, emit, print }: Ctx) {
       date,
       totals: { ...totals, avg: totals.bills ? Math.round(totals.sales / totals.bills) : 0, change, cost, grossProfit: totals.subtotal - totals.discount - cost },
       byMethod,
+      debt,
       topItems: items.slice(0, 10),
       byCategory: [...byCategory.values()].sort((a, b) => b.amount - a.amount),
       byStaff,

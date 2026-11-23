@@ -245,6 +245,35 @@ function migrate(raw: DatabaseSync) {
   addColumn(raw, 'ingredients', 'refill_to', 'REAL NOT NULL DEFAULT 0');
   addColumn(raw, 'stock_moves', 'lot', "TEXT NOT NULL DEFAULT ''");
   addColumn(raw, 'stock_moves', 'expires_at', 'TEXT');
+  // Customers and their credit accounts (debts).
+  addColumn(raw, 'orders', 'debt_customer_id', 'INTEGER');
+  addColumn(raw, 'orders', 'debt_amount', 'INTEGER NOT NULL DEFAULT 0');
+  raw.exec(`
+    CREATE TABLE IF NOT EXISTS customers (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      name TEXT NOT NULL,
+      phone TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      credit_limit INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS debt_entries (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      customer_id INTEGER NOT NULL REFERENCES customers(id),
+      type TEXT NOT NULL CHECK (type IN ('charge','payment')),
+      amount INTEGER NOT NULL CHECK (amount > 0),
+      order_id INTEGER REFERENCES orders(id),
+      method TEXT NOT NULL DEFAULT '',
+      shift_id INTEGER REFERENCES shifts(id),
+      note TEXT NOT NULL DEFAULT '',
+      user_id INTEGER REFERENCES users(id),
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_debt_entries_cust ON debt_entries(customer_id, id);
+  `);
   // Promotions / coupons.
   addColumn(raw, 'orders', 'promo_id', 'INTEGER');
   addColumn(raw, 'orders', 'promo_name', "TEXT NOT NULL DEFAULT ''");
