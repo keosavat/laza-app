@@ -119,7 +119,7 @@ export function orderRoutes({ db, emit, print }: Ctx) {
     const type = oneOf(req.body.type, 'ປະເພດສ່ວນຫຼຸດ', ['none', 'percent', 'amount']);
     const value = type === 'none' ? 0 : num(req.body.value, 'ສ່ວນຫຼຸດ', { min: 0, max: type === 'percent' ? 100 : 1e12 });
     db.tx(() => {
-      db.run('UPDATE orders SET discount_type=?, discount_value=? WHERE id=?', type, value, o.id);
+      db.run("UPDATE orders SET discount_type=?, discount_value=?, promo_id=NULL, promo_name='' WHERE id=?", type, value, o.id);
       recalc(db, o.id);
       db.audit(req.user.bid, req.user.uid, 'discount', 'order', o.id, { type, value });
     });

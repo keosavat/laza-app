@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRightLeft, Ban, Check, Percent, Printer, QrCode, Send, Wallet, ChefHat, X } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, Ban, Check, Percent, Tag, Printer, QrCode, Send, Wallet, ChefHat, X } from 'lucide-react';
 import QrModal from '../components/QrModal';
-import { get, post, type Order, type OrderItem, type FloorTable, type ItemStatus } from '../lib/api';
+import { del, get, post, type Order, type OrderItem, type FloorTable, type ItemStatus } from '../lib/api';
 import { useSession, useSync } from '../lib/store';
 import { can, dateTime, kip, since, STATUS_CLASS, STATUS_LABEL, time } from '../lib/format';
 import { device } from '../lib/device';
@@ -20,7 +20,7 @@ export default function OrderScreen() {
   const [order, reload, loading] = useLoad(() => get<Order>(`/orders/${id}`), [id]);
   const cartState = useCart();
   const cart = cartState.cart;
-  const [modal, setModal] = useState<null | 'discount' | 'transfer' | 'checkout' | 'cancel' | 'qr' | 'bulkcancel'>(null);
+  const [modal, setModal] = useState<null | 'discount' | 'promo' | 'transfer' | 'checkout' | 'cancel' | 'qr' | 'bulkcancel'>(null);
   const [voiding, setVoiding] = useState<OrderItem | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -140,9 +140,10 @@ export default function OrderScreen() {
           {closed && <Badge className={order.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'}>{order.status === 'paid' ? 'ຊຳລະແລ້ວ' : 'ຍົກເລີກ'}</Badge>}
         </div>
         {!closed && (
-          <div className={cx('mt-3 grid gap-1.5', order.type === 'dine_in' ? 'grid-cols-5' : 'grid-cols-4')}>
+          <div className="mt-3 grid grid-cols-3 gap-1.5">
             {order.type === 'dine_in' && <ActionBtn icon={QrCode} label="QR" onClick={() => setModal('qr')} highlight={!!order.qr_token} />}
             <ActionBtn icon={Printer} label="ພິມບິນ" onClick={doPrintBill} disabled={busy || (!active.length && !cart.length)} />
+            <ActionBtn icon={Tag} label="ໂປຣໂມຊັນ" onClick={() => setModal('promo')} highlight={!!order.promo_id} />
             <ActionBtn icon={Percent} label="ສ່ວນຫຼຸດ" onClick={() => setModal('discount')} disabled={!can(role, 'discount')} />
             <ActionBtn icon={ArrowRightLeft} label="ຍ້າຍໂຕະ" onClick={() => setModal('transfer')} disabled={order.type !== 'dine_in'} />
             <ActionBtn icon={Ban} label="ຍົກເລີກ" onClick={() => setModal('cancel')} danger />
@@ -258,7 +259,7 @@ export default function OrderScreen() {
 
       <div className="space-y-1 border-t border-slate-200 p-3 text-sm">
         <Line label="ລວມ" value={order.subtotal + cartTotal} />
-        {order.discount > 0 && <Line label={`ສ່ວນຫຼຸດ${order.discount_type === 'percent' ? ` ${order.discount_value}%` : ''}`} value={-order.discount} className="text-rose-600" />}
+        {order.discount > 0 && <Line label={order.promo_name ? `ໂປຣ: ${order.promo_name}` : `ສ່ວນຫຼຸດ${order.discount_type === 'percent' ? ` ${order.discount_value}%` : ''}`} value={-order.discount} className="text-rose-600" />}
         {order.service > 0 && <Line label={`ຄ່າບໍລິການ ${branch!.service_rate}%`} value={order.service} />}
         {order.vat > 0 && <Line label={`VAT ${branch!.vat_rate}%`} value={order.vat} />}
         <div className="flex items-end justify-between pt-1">
@@ -313,6 +314,7 @@ export default function OrderScreen() {
       </div>
 
       {modal === 'qr' && <QrModal order={order} onClose={() => setModal(null)} onChanged={reload} />}
+      {modal === 'promo' && <PromoModal order={order} onClose={() => setModal(null)} onDone={reload} />}
       {modal === 'discount' && <DiscountModal order={order} onClose={() => setModal(null)} onDone={reload} />}
       {modal === 'transfer' && <TransferModal order={order} onClose={() => setModal(null)} onDone={reload} />}
       {modal === 'cancel' && (
@@ -498,6 +500,79 @@ function ActionBtn({ icon: Icon, label, onClick, disabled, danger, highlight }: 
       <Icon className="size-4" />
       {label}
     </button>
+  );
+}
+
+interface PromoList {
+  subtotal: number;
+  applied: { id: number; name: string } | null;
+  list: { id: number; name: string; type: 'percent' | 'amount'; value: number; min_subtotal: number; max_discount: number; estimate: number; reachable: boolean }[];
+}
+
+function PromoModal({ order, onClose, onDone }: { order: Order; onClose: () => void; onDone: () => void }) {
+  const [data] = useLoad(() => get<PromoList>(`/orders/${order.id}/promotions`));
+  const [code, setCode] = useState('');
+  const { busy, run } = useAction();
+  const apply = async (body: { promoId?: number; code?: string }) => {
+    if (await run(() => post(`/orders/${order.id}/promo`, body), 'ໃຊ້ໂປຣໂມຊັນແລ້ວ')) {
+      onDone();
+      onClose();
+    }
+  };
+  const remove = async () => {
+    if (await run(() => del(`/orders/${order.id}/promo`), 'ເອົາໂປຣໂມຊັນອອກແລ້ວ')) {
+      onDone();
+      onClose();
+    }
+  };
+  return (
+    <Modal open onClose={onClose} title="ໂປຣໂມຊັນ / ຄູປອງ">
+      <div className="space-y-4">
+        {order.promo_id ? (
+          <div className="flex items-center justify-between rounded-lg bg-emerald-50 p-3 text-sm">
+            <span>ກຳລັງໃຊ້: <b>{order.promo_name}</b> (ຫຼຸດ {kip(order.discount)})</span>
+            <Button size="sm" variant="ghost" onClick={remove} disabled={busy}>ເອົາອອກ</Button>
+          </div>
+        ) : null}
+        <div>
+          <div className="mb-2 text-sm font-semibold">ໂປຣໂມຊັນທີ່ໃຊ້ໄດ້ຕອນນີ້</div>
+          {!data ? (
+            <Spinner />
+          ) : data.list.length === 0 ? (
+            <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">ບໍ່ມີໂປຣໂມຊັນທີ່ໃຊ້ໄດ້ຕອນນີ້</div>
+          ) : (
+            <div className="space-y-2">
+              {data.list.map((p) => (
+                <button
+                  key={p.id}
+                  disabled={busy || !p.reachable}
+                  onClick={() => apply({ promoId: p.id })}
+                  className={cx('flex w-full items-center justify-between gap-2 rounded-lg border p-3 text-left text-sm', p.reachable ? 'border-slate-300 hover:border-brand-600' : 'border-slate-200 opacity-60', order.promo_id === p.id && 'border-brand-600 bg-brand-50')}
+                >
+                  <span>
+                    <span className="font-medium">{p.name}</span>
+                    <span className="block text-xs text-slate-500">
+                      {p.type === 'percent' ? `${p.value}%` : kip(p.value)}
+                      {p.max_discount > 0 && ` · ສູງສຸດ ${kip(p.max_discount)}`}
+                      {p.min_subtotal > 0 && ` · ຍອດຂັ້ນຕ່ຳ ${kip(p.min_subtotal)}`}
+                    </span>
+                  </span>
+                  <span className="tabular shrink-0 text-right font-semibold text-emerald-700">{p.reachable ? `-${kip(p.estimate)}` : 'ຍັງບໍ່ຮອດຍອດ'}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div>
+          <div className="mb-2 text-sm font-semibold">ມີລະຫັດຄູປອງ?</div>
+          <div className="flex gap-2">
+            <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="ເຊັ່ນ VIP50" maxLength={30} />
+            <Button onClick={() => apply({ code })} disabled={busy || !code.trim()}>ໃຊ້</Button>
+          </div>
+        </div>
+        <div className="text-xs text-slate-400">ໂປຣໂມຊັນຈະແທນທີ່ສ່ວນຫຼຸດທີ່ໃສ່ເອງ, ແລະ ກົງກັນຂ້າມ</div>
+      </div>
+    </Modal>
   );
 }
 

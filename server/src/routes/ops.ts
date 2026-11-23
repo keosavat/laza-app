@@ -275,13 +275,24 @@ export function opsRoutes({ db, emit, print }: Ctx) {
   });
 
   r.get('/audit', requirePerm('admin'), (req, res) => {
-    res.json(
-      db.all(
-        `SELECT a.*, u.name AS user_name FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
-          WHERE a.branch_id = ? ORDER BY a.id DESC LIMIT 300`,
-        req.user.bid,
-      ),
+    const off = getBranch(db, req.user.bid).utc_offset_min;
+    const where = ['a.branch_id = ?'];
+    const args: (string | number)[] = [req.user.bid];
+    const q = req.query;
+    if (q.user) { where.push('a.user_id = ?'); args.push(int(q.user, 'ພະນັກງານ')); }
+    if (q.action) { where.push('a.action = ?'); args.push(String(q.action)); }
+    if (q.entity) { where.push('a.entity = ?'); args.push(String(q.entity)); }
+    if (q.from) { where.push('a.created_at >= ?'); args.push(dayRange(String(q.from), off).start); }
+    if (q.to) { where.push('a.created_at < ?'); args.push(dayRange(String(q.to), off).end); }
+    const limit = Math.min(500, Math.max(1, Number(q.limit) || 100));
+    const offset = Math.max(0, Number(q.offset) || 0);
+    const rows = db.all(
+      `SELECT a.*, u.name AS user_name FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
+        WHERE ${where.join(' AND ')} ORDER BY a.id DESC LIMIT ? OFFSET ?`,
+      ...args, limit + 1, offset,
     );
+    const actions = db.all('SELECT DISTINCT action FROM audit_log WHERE branch_id = ? ORDER BY action', req.user.bid).map((x: any) => x.action);
+    res.json({ rows: rows.slice(0, limit), hasMore: rows.length > limit, actions });
   });
 
   return r;

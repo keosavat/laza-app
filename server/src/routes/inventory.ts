@@ -10,13 +10,14 @@ export function inventoryRoutes({ db, emit }: Ctx) {
   const r = Router();
   const changed = (bid: number) => emit(bid, ['menu', 'orders']);
 
-  const out = (i: any) => ({ ...i, low: i.active && i.stock <= i.low_at, out: i.active && i.stock <= 0, value: Math.round(Math.max(i.stock, 0) * i.cost) });
+  const out = (i: any) => ({ ...i, low: i.active && i.stock <= i.low_at, out: i.active && i.stock <= 0, value: Math.round(Math.max(i.stock, 0) * i.cost), suggest: i.active && i.refill_to > i.stock && (i.stock <= i.low_at || i.low_at === 0) ? Math.round((i.refill_to - i.stock) * 1000) / 1000 : 0 });
 
   r.get('/ingredients', requirePerm('admin'), (req, res) => {
     res.json(
       db
         .all(
-          `SELECT i.*, (SELECT COUNT(*) FROM recipe_lines rl WHERE rl.ingredient_id = i.id) AS used_in
+          `SELECT i.*, (SELECT COUNT(*) FROM recipe_lines rl WHERE rl.ingredient_id = i.id) AS used_in,
+                    (SELECT MIN(m.expires_at) FROM stock_moves m WHERE m.ingredient_id = i.id AND m.type = 'in' AND m.expires_at IS NOT NULL AND i.stock > 0) AS next_expiry
              FROM ingredients i WHERE i.branch_id = ? ORDER BY i.active DESC, i.name`,
           req.user.bid,
         )
@@ -29,14 +30,24 @@ export function inventoryRoutes({ db, emit }: Ctx) {
     unit: str(body.unit ?? prev?.unit ?? 'ອັນ', 'ຫົວໜ່ວຍ', { required: true, max: 20 }),
     cost: num(body.cost ?? prev?.cost ?? 0, 'ຕົ້ນທຶນ/ຫົວໜ່ວຍ', { min: 0, max: 1e9 }),
     low_at: num(body.lowAt ?? prev?.low_at ?? 0, 'ແຈ້ງເຕືອນເມື່ອເຫຼືອ', { min: 0, max: 1e9 }),
+    category: str(body.category ?? prev?.category ?? '', 'ໝວດ', { max: 40 }),
+    pack_name: str(body.packName ?? prev?.pack_name ?? '', 'ຫົວໜ່ວຍແພັກ', { max: 20 }),
+    pack_size: num(body.packSize ?? prev?.pack_size ?? 0, 'ຂະໜາດແພັກ', { min: 0, max: 1e9 }),
+    refill_to: num(body.refillTo ?? prev?.refill_to ?? 0, 'ເຕີມໃຫ້ເຖິງ', { min: 0, max: 1e9 }),
     active: body.active === undefined ? (prev?.active ?? 1) : body.active ? 1 : 0,
   });
 
+  const checkRead = (v: ReturnType<typeof read>) => {
+    if (!!v.pack_name !== v.pack_size > 0) throw bad('ກະລຸນາໃສ່ທັງຊື່ແພັກ ແລະ ຂະໜາດແພັກ (ຫຼື ປ່ອຍວ່າງທັງສອງ)');
+    if (v.refill_to > 0 && v.refill_to < v.low_at) throw bad('"ເຕີມໃຫ້ເຖິງ" ຕ້ອງບໍ່ໜ້ອຍກວ່າ "ແຈ້ງເຕືອນເມື່ອເຫຼືອ"');
+  };
+
   r.post('/ingredients', requirePerm('admin'), (req, res) => {
     const v = read(req.body ?? {});
+    checkRead(v);
     const start = req.body.stock === undefined ? 0 : num(req.body.stock, 'ສະຕັອກເລີ່ມຕົ້ນ', { min: 0, max: 1e9 });
     const id = db.tx(() => {
-      const { id } = db.run('INSERT INTO ingredients (branch_id, name, unit, cost, stock, low_at, active, created_at) VALUES (?,?,?,?,0,?,?,?)', req.user.bid, v.name, v.unit, v.cost, v.low_at, v.active, now());
+      const { id } = db.run('INSERT INTO ingredients (branch_id, name, unit, cost, stock, low_at, active, created_at, category, pack_name, pack_size, refill_to) VALUES (?,?,?,?,0,?,?,?,?,?,?,?)', req.user.bid, v.name, v.unit, v.cost, v.low_at, v.active, now(), v.category, v.pack_name, v.pack_size, v.refill_to);
       if (start > 0) moveStock(db, { bid: req.user.bid, ingredientId: id, type: 'adjust', qty: start, note: 'ສະຕັອກເລີ່ມຕົ້ນ', uid: req.user.uid });
       db.audit(req.user.bid, req.user.uid, 'create', 'ingredient', id, v);
       return id;
@@ -49,8 +60,9 @@ export function inventoryRoutes({ db, emit }: Ctx) {
     const prev = db.get('SELECT * FROM ingredients WHERE id = ? AND branch_id = ?', int(req.params.id, 'id'), req.user.bid);
     if (!prev) throw notFound('ບໍ່ພົບວັດຖຸດິບ');
     const v = read(req.body ?? {}, prev);
+    checkRead(v);
     db.tx(() => {
-      db.run('UPDATE ingredients SET name=?, unit=?, cost=?, low_at=?, active=? WHERE id=?', v.name, v.unit, v.cost, v.low_at, v.active, prev.id);
+      db.run('UPDATE ingredients SET name=?, unit=?, cost=?, low_at=?, active=?, category=?, pack_name=?, pack_size=?, refill_to=? WHERE id=?', v.name, v.unit, v.cost, v.low_at, v.active, v.category, v.pack_name, v.pack_size, v.refill_to, prev.id);
       if (v.cost !== prev.cost) syncCostsForIngredient(db, prev.id);
       db.audit(req.user.bid, req.user.uid, 'update', 'ingredient', prev.id, v);
     });
@@ -75,7 +87,13 @@ export function inventoryRoutes({ db, emit }: Ctx) {
     const ing = db.get('SELECT * FROM ingredients WHERE id = ? AND branch_id = ?', int(req.params.id, 'id'), req.user.bid);
     if (!ing) throw notFound('ບໍ່ພົບວັດຖຸດິບ');
     const type = oneOf(req.body.type, 'ປະເພດ', ['in', 'adjust', 'waste'] as const);
-    const qty = num(req.body.qty, 'ຈຳນວນ', { min: type === 'adjust' ? 0 : 0.001, max: 1e9 });
+    const byPack = req.body.byPack === true;
+    if (byPack && !(ing.pack_size > 0)) throw bad('ວັດຖຸດິບນີ້ຍັງບໍ່ໄດ້ຕັ້ງຂະໜາດແພັກ');
+    const mult = byPack && type === 'in' ? ing.pack_size : 1;
+    const qty = num(req.body.qty, 'ຈຳນວນ', { min: type === 'adjust' ? 0 : 0.001, max: 1e9 }) * mult;
+    const lot = str(req.body.lot, 'ລັອດ', { max: 40 });
+    const expiresAt = req.body.expiresAt ? String(req.body.expiresAt) : null;
+    if (expiresAt && !/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) throw bad('ວັນໝົດອາຍຸບໍ່ຖືກຕ້ອງ');
     const note = str(req.body.note, 'ໝາຍເຫດ', { max: 200 });
     const delta = type === 'in' ? qty : type === 'waste' ? -qty : qty - ing.stock;
     const result = moveStock(db, {
@@ -83,7 +101,9 @@ export function inventoryRoutes({ db, emit }: Ctx) {
       ingredientId: ing.id,
       type,
       qty: delta,
-      unitCost: type === 'in' && req.body.unitCost !== undefined && req.body.unitCost !== '' ? num(req.body.unitCost, 'ລາຄາຊື້/ຫົວໜ່ວຍ', { min: 0, max: 1e9 }) : undefined,
+      unitCost: type === 'in' && req.body.unitCost !== undefined && req.body.unitCost !== '' ? num(req.body.unitCost, 'ລາຄາຊື້/ຫົວໜ່ວຍ', { min: 0, max: 1e9 }) / mult : undefined,
+      lot: type === 'in' ? lot : '',
+      expiresAt: type === 'in' ? expiresAt : null,
       note,
       uid: req.user.uid,
     });
@@ -117,6 +137,11 @@ export function inventoryRoutes({ db, emit }: Ctx) {
       lowCount: low.length,
       outCount: rows.filter((i) => i.out).length,
       stockValue: rows.reduce((s, i) => s + i.value, 0),
+      missingRecipe: db.all(
+        `SELECT id, name FROM menu_items WHERE branch_id = ? AND active = 1 AND NOT EXISTS (SELECT 1 FROM recipe_lines rl WHERE rl.menu_item_id = menu_items.id) ORDER BY name`,
+        req.user.bid,
+      ),
+      menuTotal: (db.get('SELECT COUNT(*) AS c FROM menu_items WHERE branch_id = ? AND active = 1', req.user.bid) as any).c,
       low: low.slice(0, 20).map((i) => ({ id: i.id, name: i.name, unit: i.unit, stock: i.stock, low_at: i.low_at })),
     });
   });

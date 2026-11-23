@@ -239,6 +239,37 @@ function migrate(raw: DatabaseSync) {
     );
     CREATE INDEX IF NOT EXISTS idx_stock_moves_ing ON stock_moves(ingredient_id, id);
   `);
+  addColumn(raw, 'ingredients', 'category', "TEXT NOT NULL DEFAULT ''");
+  addColumn(raw, 'ingredients', 'pack_name', "TEXT NOT NULL DEFAULT ''");
+  addColumn(raw, 'ingredients', 'pack_size', 'REAL NOT NULL DEFAULT 0');
+  addColumn(raw, 'ingredients', 'refill_to', 'REAL NOT NULL DEFAULT 0');
+  addColumn(raw, 'stock_moves', 'lot', "TEXT NOT NULL DEFAULT ''");
+  addColumn(raw, 'stock_moves', 'expires_at', 'TEXT');
+  // Promotions / coupons.
+  addColumn(raw, 'orders', 'promo_id', 'INTEGER');
+  addColumn(raw, 'orders', 'promo_name', "TEXT NOT NULL DEFAULT ''");
+  raw.exec(`
+    CREATE TABLE IF NOT EXISTS promotions (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      name TEXT NOT NULL,
+      code TEXT NOT NULL DEFAULT '',
+      type TEXT NOT NULL CHECK (type IN ('percent','amount')),
+      value REAL NOT NULL,
+      min_subtotal INTEGER NOT NULL DEFAULT 0,
+      max_discount INTEGER NOT NULL DEFAULT 0,
+      starts_on TEXT NOT NULL DEFAULT '',
+      ends_on TEXT NOT NULL DEFAULT '',
+      days TEXT NOT NULL DEFAULT '0123456',
+      time_from TEXT NOT NULL DEFAULT '',
+      time_to TEXT NOT NULL DEFAULT '',
+      order_type TEXT NOT NULL DEFAULT 'all',
+      max_uses INTEGER NOT NULL DEFAULT 0,
+      used_count INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+  `);
   // Printing: category → kitchen printer routing, auto-print switch.
   addColumn(raw, 'categories', 'printer_id', 'INTEGER');
   addColumn(raw, 'branches', 'auto_kitchen_print', 'INTEGER NOT NULL DEFAULT 1');

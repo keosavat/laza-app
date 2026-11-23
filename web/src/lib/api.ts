@@ -38,7 +38,7 @@ export interface Payment { id: number; method: PayMethod; currency: Currency; am
 export interface Order {
   id: number; order_no: string; bill_no: string | null; type: 'dine_in' | 'takeaway'; table_id: number | null; table_name: string | null;
   queue_no: number | null; status: 'open' | 'paid' | 'cancelled'; customer_name: string; note: string;
-  discount_type: 'none' | 'percent' | 'amount'; discount_value: number;
+  discount_type: 'none' | 'percent' | 'amount'; discount_value: number; promo_id?: number | null; promo_name?: string;
   subtotal: number; discount: number; service: number; vat: number; total: number; paid_total: number; change_lak: number;
   created_at: string; paid_at: string | null; bill_printed_at: string | null; created_by_name?: string;
   qr_token: string | null; qr_expires_at: string | null; guest_count: number;
@@ -70,10 +70,11 @@ export interface PrintJob {
 export interface Ingredient {
   id: number; name: string; unit: string; cost: number; stock: number; low_at: number; active: number;
   low: boolean; out: boolean; value: number; used_in: number;
+  category: string; pack_name: string; pack_size: number; refill_to: number; suggest: number; next_expiry: string | null;
 }
 export interface StockMove {
   id: number; ingredient_id: number; ingredient_name: string; unit: string; type: 'in' | 'adjust' | 'waste' | 'sale';
-  qty: number; unit_cost: number; balance: number; note: string; user_name: string | null; created_at: string;
+  qty: number; unit_cost: number; balance: number; note: string; lot?: string; expires_at?: string | null; user_name: string | null; created_at: string;
 }
 export interface Recipe {
   item: { id: number; name: string; price: number; cost: number };

@@ -3,7 +3,8 @@ import { AlertTriangle, ArrowDownToLine, ClipboardCheck, Pencil, Plus, Trash2 } 
 import { del, get, post, put, type Ingredient, type StockMove } from '../lib/api';
 import { useSync } from '../lib/store';
 import { dateTime, kip } from '../lib/format';
-import { Badge, Button, Card, Empty, Field, Input, Modal, MoneyInput, PageHeader, Spinner, cx, toast, useAction, useLoad } from '../components/ui';
+import { Download } from 'lucide-react';
+import { Badge, Button, Card, Empty, Field, Input, Modal, MoneyInput, PageHeader, Select, Spinner, cx, toast, useAction, useLoad } from '../components/ui';
 
 const MOVE: Record<StockMove['type'], [string, string]> = {
   in: ['ຮັບເຂົ້າ', 'bg-emerald-100 text-emerald-800'],
@@ -20,7 +21,21 @@ export default function Inventory() {
   const [edit, setEdit] = useState<Partial<Ingredient> | null>(null);
   const [stockFor, setStockFor] = useState<{ ing: Ingredient; type: 'in' | 'adjust' | 'waste' } | null>(null);
   const [onlyLow, setOnlyLow] = useState(false);
+  const [q, setQ] = useState('');
+  const [cat, setCat] = useState('');
+  const [sum] = useLoad(() => get<{ missingRecipe: { id: number; name: string }[]; menuTotal: number }>('/inventory/summary'));
+  const [showMissing, setShowMissing] = useState(false);
   const { run } = useAction();
+  const remove = async (i: Ingredient) => {
+    if (i.used_in > 0) return toast.err(`${i.name} ຢູ່ໃນສູດຂອງ ${i.used_in} ເມນູ — ເອົາອອກຈາກສູດກ່ອນ ຈຶ່ງລຶບໄດ້`);
+    if (!confirm(`ລຶບ ${i.name}?${i.stock > 0 ? `\nຍັງມີສະຕັອກ ${i.stock} ${i.unit} ຢູ່` : ''}`)) return;
+    const r = await run(() => del<{ deactivated: boolean }>(`/ingredients/${i.id}`));
+    if (r) {
+      toast.ok(r.deactivated ? 'ມີປະຫວັດແລ້ວ ຈຶ່ງປິດໃຊ້ແທນການລຶບ' : 'ລຶບແລ້ວ');
+      setEdit(null);
+      refresh();
+    }
+  };
   const refresh = () => {
     reload();
     reloadMoves();
@@ -28,7 +43,19 @@ export default function Inventory() {
   useSync(['menu', 'orders'], refresh);
 
   if (loading || !items) return <Spinner />;
-  const shown = items.filter((i) => !onlyLow || i.low);
+  const cats = [...new Set(items.map((i) => i.category).filter(Boolean))].sort();
+  const shown = items.filter((i) => (!onlyLow || i.low) && (!cat || i.category === cat) && (!q.trim() || i.name.toLowerCase().includes(q.trim().toLowerCase())));
+  const today = new Date().toISOString().slice(0, 10);
+  const soon = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  const toBuy = items.filter((i) => i.suggest > 0);
+  const exportCsv = () => {
+    const rows = [['ຊື່', 'ໝວດ', 'ຫົວໜ່ວຍ', 'ສະຕັອກ', 'ເຕືອນເມື່ອເຫຼືອ', 'ເຕີມໃຫ້ເຖິງ', 'ຕົ້ນທຶນ/ຫົວໜ່ວຍ', 'ມູນຄ່າ'], ...items.map((i) => [i.name, i.category, i.unit, i.stock, i.low_at, i.refill_to, i.cost, i.value])];
+    const csv = '\ufeff' + rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'stock-' + today + '.csv';
+    a.click();
+  };
   const lowCount = items.filter((i) => i.low).length;
   const value = items.reduce((s, i) => s + i.value, 0);
 
@@ -38,9 +65,12 @@ export default function Inventory() {
         title="ສະຕັອກ ແລະ ວັດຖຸດິບ"
         sub="ຂາຍແລ້ວຕັດສະຕັອກອັດຕະໂນມັດຕາມສູດອາຫານ (ຕັ້ງສູດໃນ ເມນູອາຫານ → ແກ້ໄຂເມນູ)"
         actions={
-          <Button onClick={() => setEdit({ name: '', unit: 'ກຣາມ', cost: 0, low_at: 0, active: 1 })}>
-            <Plus className="size-4" /> ເພີ່ມວັດຖຸດິບ
-          </Button>
+          <>
+            <Button variant="secondary" onClick={exportCsv}><Download className="size-4" /> Excel (CSV)</Button>
+            <Button onClick={() => setEdit({ name: '', unit: 'ກຣາມ', cost: 0, low_at: 0, active: 1 })}>
+              <Plus className="size-4" /> ເພີ່ມວັດຖຸດິບ
+            </Button>
+          </>
         }
       />
 
@@ -51,6 +81,29 @@ export default function Inventory() {
         <Stat label="ການເຄື່ອນໄຫວວັນນີ້" value={String((moves ?? []).filter((m) => m.created_at.slice(0, 10) === new Date().toISOString().slice(0, 10)).length)} />
       </div>
 
+      {sum && sum.menuTotal > 0 && sum.missingRecipe.length > 0 && (
+        <Card className="border-sky-200 bg-sky-50 p-3 text-sm">
+          <button onClick={() => setShowMissing(!showMissing)} className="flex w-full items-center justify-between gap-3 text-left">
+            <span><b>{sum.menuTotal - sum.missingRecipe.length}/{sum.menuTotal}</b> ເມນູມີສູດອາຫານແລ້ວ — ອີກ {sum.missingRecipe.length} ເມນູຍັງບໍ່ມີສູດ (ຍັງບໍ່ຕັດສະຕັອກ / ບໍ່ຄິດຕົ້ນທຶນອັດຕະໂນມັດ)</span>
+            <span className="shrink-0 text-sky-700 underline">{showMissing ? 'ເຊື່ອງ' : 'ເບິ່ງ'}</span>
+          </button>
+          {showMissing && <div className="mt-2 flex flex-wrap gap-1.5">{sum.missingRecipe.map((m) => <span key={m.id} className="rounded-full bg-white px-2.5 py-0.5">{m.name}</span>)}</div>}
+        </Card>
+      )}
+      {toBuy.length > 0 && (
+        <Card className="border-amber-300 bg-amber-50 p-3 text-sm">
+          <div className="mb-1 font-semibold text-amber-900">ລາຍການທີ່ຄວນສັ່ງຊື້ ({toBuy.length})</div>
+          <div className="flex flex-wrap gap-1.5">
+            {toBuy.map((i) => (
+              <span key={i.id} className="rounded-full bg-white px-2.5 py-0.5">
+                {i.name}: <b>{fmt(i.suggest)} {i.unit}</b>
+                {i.pack_size > 0 && <span className="text-slate-500"> (≈ {Math.ceil(i.suggest / i.pack_size)} {i.pack_name})</span>}
+              </span>
+            ))}
+          </div>
+        </Card>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         {(['stock', 'moves'] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)} className={cx('rounded-lg px-4 py-2 text-sm font-medium', tab === t ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 shadow-sm')}>
@@ -58,9 +111,18 @@ export default function Inventory() {
           </button>
         ))}
         {tab === 'stock' && (
-          <label className="ml-auto flex items-center gap-2 text-sm">
-            <input type="checkbox" className="size-4 accent-brand-600" checked={onlyLow} onChange={(e) => setOnlyLow(e.target.checked)} /> ສະເພາະໃກ້ໝົດ
-          </label>
+          <>
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ຄົ້ນຫາ..." className="ml-auto w-44" />
+            {cats.length > 0 && (
+              <Select value={cat} onChange={(e) => setCat(e.target.value)} className="w-36">
+                <option value="">ທຸກໝວດ</option>
+                {cats.map((c) => <option key={c}>{c}</option>)}
+              </Select>
+            )}
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" className="size-4 accent-brand-600" checked={onlyLow} onChange={(e) => setOnlyLow(e.target.checked)} /> ສະເພາະໃກ້ໝົດ
+            </label>
+          </>
         )}
       </div>
 
@@ -85,7 +147,12 @@ export default function Inventory() {
                 {shown.map((i) => (
                   <tr key={i.id} className={cx(!i.active && 'opacity-50')}>
                     <td className="px-4 py-2.5">
-                      <div className="font-medium">{i.name}</div>
+                      <div className="font-medium">{i.name}{i.category && <span className="ml-2 text-xs font-normal text-slate-400">{i.category}</span>}</div>
+                      {i.next_expiry && (
+                        <div className={cx('text-xs', i.next_expiry < today ? 'font-semibold text-rose-600' : i.next_expiry <= soon ? 'text-amber-600' : 'text-slate-400')}>
+                          {i.next_expiry < today ? 'ມີລັອດໝົດອາຍຸແລ້ວ' : 'ໝົດອາຍຸໃກ້ສຸດ'} {i.next_expiry}
+                        </div>
+                      )}
                       {!i.active && <Badge className="bg-slate-200 text-slate-600">ປິດໃຊ້</Badge>}
                     </td>
                     <td className="px-4 py-2.5 text-right">
@@ -106,6 +173,7 @@ export default function Inventory() {
                         <Button size="sm" variant="secondary" onClick={() => setStockFor({ ing: i, type: 'in' })}><ArrowDownToLine className="size-4" /> ຮັບເຂົ້າ</Button>
                         <Button size="sm" variant="ghost" onClick={() => setStockFor({ ing: i, type: 'adjust' })} title="ນັບສະຕັອກ"><ClipboardCheck className="size-4" /></Button>
                         <Button size="sm" variant="ghost" onClick={() => setEdit(i)} title="ແກ້ໄຂ"><Pencil className="size-4" /></Button>
+                        <Button size="sm" variant="ghost" onClick={() => remove(i)} title="ລຶບ" className="text-rose-500!"><Trash2 className="size-4" /></Button>
                       </div>
                     </td>
                   </tr>
@@ -138,7 +206,7 @@ export default function Inventory() {
                     <td className="px-4 py-2"><Badge className={MOVE[m.type][1]}>{MOVE[m.type][0]}</Badge></td>
                     <td className={cx('tabular px-4 py-2 text-right font-medium', m.qty < 0 ? 'text-rose-600' : 'text-emerald-700')}>{m.qty > 0 ? '+' : ''}{fmt(m.qty)} {m.unit}</td>
                     <td className="tabular px-4 py-2 text-right">{fmt(m.balance)}</td>
-                    <td className="px-4 py-2 text-slate-500">{m.note}{m.user_name ? ` · ${m.user_name}` : ''}</td>
+                    <td className="px-4 py-2 text-slate-500">{m.note}{m.lot ? ` · ລັອດ ${m.lot}` : ''}{m.expires_at ? ` · ໝົດອາຍຸ ${m.expires_at}` : ''}{m.user_name ? ` · ${m.user_name}` : ''}</td>
                   </tr>
                 ))}
               </tbody>
@@ -152,19 +220,7 @@ export default function Inventory() {
           ing={edit}
           onClose={() => setEdit(null)}
           onSaved={refresh}
-          onDelete={
-            edit.id
-              ? async () => {
-                  if (!confirm(`ລຶບ ${edit.name}?`)) return;
-                  const r = await run(() => del<{ deactivated: boolean }>(`/ingredients/${edit.id}`));
-                  if (r) {
-                    toast.ok(r.deactivated ? 'ມີປະຫວັດແລ້ວ ຈຶ່ງປິດໃຊ້ແທນການລຶບ' : 'ລຶບແລ້ວ');
-                    setEdit(null);
-                    refresh();
-                  }
-                }
-              : undefined
-          }
+          onDelete={edit.id ? () => remove(edit as Ingredient) : undefined}
         />
       )}
       {stockFor && <StockModal ing={stockFor.ing} type={stockFor.type} onClose={() => setStockFor(null)} onSaved={refresh} />}
@@ -182,10 +238,10 @@ function Stat({ label, value, bad }: { label: string; value: string; bad?: boole
 }
 
 function IngredientModal({ ing, onClose, onSaved, onDelete }: { ing: Partial<Ingredient>; onClose: () => void; onSaved: () => void; onDelete?: () => void }) {
-  const [f, setF] = useState({ name: ing.name ?? '', unit: ing.unit ?? 'ກຣາມ', cost: ing.cost ?? 0, lowAt: ing.low_at ?? 0, stock: 0, active: ing.active !== 0 });
+  const [f, setF] = useState({ name: ing.name ?? '', unit: ing.unit ?? 'ກຣາມ', cost: ing.cost ?? 0, lowAt: ing.low_at ?? 0, refillTo: ing.refill_to ?? 0, category: ing.category ?? '', packName: ing.pack_name ?? '', packSize: ing.pack_size ?? 0, stock: 0, active: ing.active !== 0 });
   const { busy, run } = useAction();
   const save = async () => {
-    const body = ing.id ? { name: f.name, unit: f.unit, cost: f.cost, lowAt: f.lowAt, active: f.active } : f;
+    const body = ing.id ? { name: f.name, unit: f.unit, cost: f.cost, lowAt: f.lowAt, refillTo: f.refillTo, category: f.category, packName: f.packName, packSize: f.packSize, active: f.active } : f;
     if (await run(() => (ing.id ? put(`/ingredients/${ing.id}`, body) : post('/ingredients', body)), 'ບັນທຶກແລ້ວ')) {
       onSaved();
       onClose();
@@ -217,6 +273,19 @@ function IngredientModal({ ing, onClose, onSaved, onDelete }: { ing: Partial<Ing
           <Field label="ແຈ້ງເຕືອນເມື່ອເຫຼືອ">
             <Input type="number" min={0} value={f.lowAt || ''} onChange={(e) => setF({ ...f, lowAt: Number(e.target.value) || 0 })} placeholder="0" />
           </Field>
+          <Field label="ເຕີມໃຫ້ເຖິງ (ໃຊ້ຄຳນວນຈຳນວນສັ່ງຊື້)">
+            <Input type="number" min={0} value={f.refillTo || ''} onChange={(e) => setF({ ...f, refillTo: Number(e.target.value) || 0 })} placeholder="0" />
+          </Field>
+          <Field label="ໝວດ" hint="ເຊັ່ນ ຊີ້ນ, ຜັກ, ເຄື່ອງດື່ມ">
+            <Input value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} maxLength={40} list="ing-cats" />
+            <datalist id="ing-cats">{['ຊີ້ນ', 'ຜັກ', 'ເຄື່ອງດື່ມ', 'ເຄື່ອງປຸງ', 'ແຫ້ງ'].map((c) => <option key={c} value={c} />)}</datalist>
+          </Field>
+          <Field label="ແພັກ/ຫີບ (ບໍ່ບັງຄັບ)" hint="ເຊັ່ນ ກິໂລ, ຫີບ, ໂຖ">
+            <Input value={f.packName} onChange={(e) => setF({ ...f, packName: e.target.value })} maxLength={20} placeholder="ຊື່ແພັກ" />
+          </Field>
+          <Field label={`1 ${f.packName || 'ແພັກ'} = ກີ່ ${f.unit || 'ຫົວໜ່ວຍ'}`}>
+            <Input type="number" min={0} value={f.packSize || ''} onChange={(e) => setF({ ...f, packSize: Number(e.target.value) || 0 })} placeholder="ເຊັ່ນ 1000" />
+          </Field>
           {!ing.id && (
             <Field label="ສະຕັອກເລີ່ມຕົ້ນ">
               <Input type="number" min={0} value={f.stock || ''} onChange={(e) => setF({ ...f, stock: Number(e.target.value) || 0 })} placeholder="0" />
@@ -238,10 +307,14 @@ function StockModal({ ing, type, onClose, onSaved }: { ing: Ingredient; type: 'i
   const [qty, setQty] = useState<number | ''>(mode === 'adjust' ? ing.stock : '');
   const [unitCost, setUnitCost] = useState(0);
   const [note, setNote] = useState('');
+  const [byPack, setByPack] = useState(false);
+  const [lot, setLot] = useState('');
+  const [expires, setExpires] = useState('');
   const { busy, run } = useAction();
+  const packOn = byPack && mode === 'in' && ing.pack_size > 0;
   const titles = { in: 'ຮັບສິນຄ້າເຂົ້າ', adjust: 'ນັບສະຕັອກ (ຕັ້ງຍອດຕາມທີ່ນັບໄດ້ຈິງ)', waste: 'ຕັດເສຍຫາຍ' };
   const n = Number(qty) || 0;
-  const after = mode === 'in' ? ing.stock + n : mode === 'waste' ? ing.stock - n : n;
+  const after = mode === 'in' ? ing.stock + n * (packOn ? ing.pack_size : 1) : mode === 'waste' ? ing.stock - n : n;
   return (
     <Modal
       open
@@ -252,7 +325,7 @@ function StockModal({ ing, type, onClose, onSaved }: { ing: Ingredient; type: 'i
           loading={busy}
           disabled={qty === '' || (mode !== 'adjust' && n <= 0)}
           onClick={async () => {
-            const body = { type: mode, qty: n, note, ...(mode === 'in' && unitCost ? { unitCost } : {}) };
+            const body = { type: mode, qty: n, note, ...(mode === 'in' ? { byPack: packOn, lot, expiresAt: expires || undefined } : {}), ...(mode === 'in' && unitCost ? { unitCost } : {}) };
             if (await run(() => post(`/ingredients/${ing.id}/stock`, body), 'ບັນທຶກສະຕັອກແລ້ວ')) {
               onSaved();
               onClose();
@@ -279,13 +352,25 @@ function StockModal({ ing, type, onClose, onSaved }: { ing: Ingredient; type: 'i
           ))}
         </div>
         <div className="text-sm text-slate-600">ສະຕັອກປັດຈຸບັນ: <b className="tabular">{fmt(ing.stock)} {ing.unit}</b></div>
-        <Field label={mode === 'adjust' ? `ຈຳນວນທີ່ນັບໄດ້ຈິງ (${ing.unit})` : `ຈຳນວນ (${ing.unit})`}>
+        {mode === 'in' && ing.pack_size > 0 && (
+          <div className="flex gap-1 rounded-lg bg-slate-50 p-1 text-sm">
+            <button onClick={() => setByPack(false)} className={cx('flex-1 rounded-md py-1', !byPack && 'bg-white shadow')}>ເປັນ {ing.unit}</button>
+            <button onClick={() => setByPack(true)} className={cx('flex-1 rounded-md py-1', byPack && 'bg-white shadow')}>ເປັນ {ing.pack_name} (1 = {fmt(ing.pack_size)} {ing.unit})</button>
+          </div>
+        )}
+        <Field label={mode === 'adjust' ? `ຈຳນວນທີ່ນັບໄດ້ຈິງ (${ing.unit})` : `ຈຳນວນ (${packOn ? ing.pack_name : ing.unit})`}>
           <Input type="number" min={0} step="any" autoFocus value={qty} onChange={(e) => setQty(e.target.value === '' ? '' : Number(e.target.value))} />
         </Field>
         {mode === 'in' && (
-          <Field label={`ລາຄາຊື້/${ing.unit} (ກີບ) — ບໍ່ບັງຄັບ`} hint="ໃສ່ເພື່ອໃຫ້ຕົ້ນທຶນເປັນຄ່າສະເລ່ຍຖ່ວງນ້ຳໜັກ">
+          <Field label={`ລາຄາຊື້/${packOn ? ing.pack_name : ing.unit} (ກີບ) — ບໍ່ບັງຄັບ`} hint="ໃສ່ເພື່ອໃຫ້ຕົ້ນທຶນເປັນຄ່າສະເລ່ຍຖ່ວງນ້ຳໜັກ">
             <MoneyInput value={unitCost} onChange={setUnitCost} placeholder={String(ing.cost)} />
           </Field>
+        )}
+        {mode === 'in' && (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="ເລກລັອດ (ບໍ່ບັງຄັບ)"><Input value={lot} onChange={(e) => setLot(e.target.value)} maxLength={40} /></Field>
+            <Field label="ວັນໝົດອາຍຸ (ບໍ່ບັງຄັບ)"><Input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} /></Field>
+          </div>
         )}
         <Field label="ໝາຍເຫດ">
           <Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} placeholder={mode === 'in' ? 'ເຊັ່ນ ຊື້ຈາກຕະຫຼາດ' : mode === 'waste' ? 'ເຊັ່ນ ໝົດອາຍຸ' : ''} />

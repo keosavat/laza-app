@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pencil, Plus, Trash2, ImagePlus, X } from 'lucide-react';
+import { Pencil, Plus, Trash2, ImagePlus, X, Search, ChevronsUpDown, Check } from 'lucide-react';
 import { del, get, post, put, type Category, type Ingredient, type MenuItem, type OptionGroup, type Printer, type Recipe } from '../lib/api';
 import { useSync } from '../lib/store';
 import { kip } from '../lib/format';
@@ -356,8 +356,9 @@ function ItemModal({ item, cats, onClose, onSaved }: { item: Partial<MenuItem>; 
 /** Recipe: which ingredients (and how much) one portion uses. Saved separately from the item. */
 function RecipeEditor({ itemId, price, onSaved }: { itemId: number; price: number; onSaved: () => void }) {
   const [data, reloadRecipe, loading] = useLoad(() => get<Recipe>(`/menu-items/${itemId}/recipe`), [itemId]);
-  const [ings] = useLoad(() => get<Ingredient[]>('/ingredients'));
+  const [ings, reloadIngs] = useLoad(() => get<Ingredient[]>('/ingredients'));
   const [lines, setLines] = useState<{ ingredientId: number; qty: number }[] | null>(null);
+  const [creatingFor, setCreatingFor] = useState<number | null>(null);
   const [fromRecipe, setFromRecipe] = useState<boolean | null>(null);
   const { busy, run } = useAction();
   if (loading || !data || !ings) return <div className="mt-6 text-sm text-slate-400">ກຳລັງໂຫຼດສູດ...</div>;
@@ -365,7 +366,6 @@ function RecipeEditor({ itemId, price, onSaved }: { itemId: number; price: numbe
   const useCost = fromRecipe ?? data.costFromRecipe;
   const byId = new Map(ings.map((i) => [i.id, i]));
   const cost = Math.round(cur.reduce((s, l) => s + l.qty * (byId.get(l.ingredientId)?.cost ?? 0), 0));
-  const free = ings.filter((i) => i.active && !cur.some((l) => l.ingredientId === i.id));
   const set = (i: number, patch: Partial<{ ingredientId: number; qty: number }>) => setLines(cur.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const margin = price ? Math.round(((price - cost) / price) * 100) : 0;
 
@@ -373,18 +373,17 @@ function RecipeEditor({ itemId, price, onSaved }: { itemId: number; price: numbe
     <div className="mt-6 rounded-xl border border-slate-200 p-4">
       <h3 className="font-semibold">ສູດອາຫານ (ຕັດສະຕັອກອັດຕະໂນມັດເມື່ອຂາຍ)</h3>
       <p className="mb-3 text-xs text-slate-500">ວັດຖຸດິບທີ່ໃຊ້ຕໍ່ 1 ຈານ. ຖ້າບໍ່ໃສ່ສູດ ເມນູນີ້ຈະບໍ່ຕັດສະຕັອກ.</p>
-      {ings.length === 0 && <p className="text-sm text-amber-700">ຍັງບໍ່ມີວັດຖຸດິບ — ເພີ່ມໄດ້ທີ່ເມນູ ສະຕັອກ</p>}
       <div className="space-y-2">
         {cur.map((l, i) => {
           const ing = byId.get(l.ingredientId);
           return (
-            <div key={l.ingredientId} className="flex items-center gap-2">
-              <Select value={l.ingredientId} onChange={(e) => set(i, { ingredientId: Number(e.target.value) })} className="w-auto! min-w-0 flex-1">
-                {ing && <option value={ing.id}>{ing.name}</option>}
-                {free.map((o) => (
-                  <option key={o.id} value={o.id}>{o.name}</option>
-                ))}
-              </Select>
+            <div key={i} className="flex items-center gap-2">
+              <IngredientPicker
+                value={l.ingredientId}
+                ings={ings.filter((o) => o.active && (o.id === l.ingredientId || !cur.some((x) => x.ingredientId === o.id)))}
+                onPick={(id) => set(i, { ingredientId: id })}
+                onCreate={() => setCreatingFor(i)}
+              />
               <Input type="number" min={0} step="any" value={l.qty || ''} onChange={(e) => set(i, { qty: Number(e.target.value) || 0 })} className="w-24! text-right" />
               <span className="w-14 text-sm text-slate-500">{ing?.unit}</span>
               <span className="tabular w-24 text-right text-sm text-slate-500">{kip(Math.round(l.qty * (ing?.cost ?? 0)))}</span>
@@ -394,9 +393,10 @@ function RecipeEditor({ itemId, price, onSaved }: { itemId: number; price: numbe
             </div>
           );
         })}
+        {cur.length === 0 && <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">ຍັງບໍ່ມີວັດຖຸດິບໃນສູດ — ກົດ "ເພີ່ມວັດຖຸດິບ" ແລ້ວເລືອກ ຫຼື ສ້າງວັດຖຸດິບໃໝ່</p>}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <Button size="sm" variant="secondary" disabled={!free.length} onClick={() => setLines([...cur, { ingredientId: free[0].id, qty: 1 }])}>
+        <Button size="sm" variant="secondary" disabled={cur.some((l) => !l.ingredientId)} onClick={() => setLines([...cur, { ingredientId: 0, qty: 1 }])}>
           <Plus className="size-4" /> ເພີ່ມວັດຖຸດິບ
         </Button>
         <span className="ml-auto text-sm">ຕົ້ນທຶນຕາມສູດ <b className="tabular">{kip(cost)}</b> · ກຳໄລ <b className="tabular">{margin}%</b></span>
@@ -407,7 +407,7 @@ function RecipeEditor({ itemId, price, onSaved }: { itemId: number; price: numbe
       <Button
         className="mt-3"
         loading={busy}
-        disabled={cur.some((l) => !(l.qty > 0))}
+        disabled={cur.some((l) => !(l.qty > 0) || !l.ingredientId)}
         onClick={async () => {
           if (await run(() => put(`/menu-items/${itemId}/recipe`, { lines: cur, costFromRecipe: useCost }), 'ບັນທຶກສູດແລ້ວ')) {
             await reloadRecipe();
@@ -419,6 +419,91 @@ function RecipeEditor({ itemId, price, onSaved }: { itemId: number; price: numbe
       >
         ບັນທຶກສູດ
       </Button>
+      {creatingFor !== null && (
+        <QuickIngredient
+          onClose={() => setCreatingFor(null)}
+          onCreated={async (ing) => {
+            await reloadIngs();
+            set(creatingFor, { ingredientId: ing.id });
+            setCreatingFor(null);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/** Searchable ingredient dropdown with a "create new" shortcut. */
+function IngredientPicker({ value, ings, onPick, onCreate }: { value: number; ings: Ingredient[]; onPick: (id: number) => void; onCreate: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const cur = ings.find((i) => i.id === value);
+  const shown = ings.filter((i) => !q.trim() || i.name.toLowerCase().includes(q.trim().toLowerCase()));
+  return (
+    <div className="relative min-w-0 flex-1">
+      <button type="button" onClick={() => { setOpen(!open); setQ(''); }} className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-left text-sm">
+        <span className={cx('truncate', !cur && 'text-slate-400')}>{cur?.name ?? 'ເລືອກວັດຖຸດິບ...'}</span>
+        <ChevronsUpDown className="size-4 shrink-0 text-slate-400" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-11 z-20 w-72 max-w-[80vw] rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+            <div className="relative mb-1">
+              <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+              <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="ຄົ້ນຫາ..." className="pl-8" />
+            </div>
+            <div className="max-h-48 overflow-y-auto">
+              {shown.length === 0 && <div className="px-2 py-3 text-center text-sm text-slate-400">ບໍ່ພົບວັດຖຸດິບ</div>}
+              {shown.map((i) => (
+                <button key={i.id} type="button" onClick={() => { onPick(i.id); setOpen(false); }} className="flex w-full items-center justify-between rounded px-2 py-2 text-left text-sm hover:bg-slate-100">
+                  <span>{i.name} <span className="text-xs text-slate-400">({i.unit})</span></span>
+                  {i.id === value && <Check className="size-4 text-brand-600" />}
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={() => { setOpen(false); onCreate(); }} className="mt-1 flex w-full items-center gap-2 border-t border-slate-100 px-2 pt-2 text-sm font-medium text-brand-700">
+              <Plus className="size-4" /> ສ້າງວັດຖຸດິບໃໝ່
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Create an ingredient without leaving the recipe. */
+function QuickIngredient({ onClose, onCreated }: { onClose: () => void; onCreated: (i: Ingredient) => void }) {
+  const [f, setF] = useState({ name: '', unit: 'ກຣາມ', cost: 0 });
+  const { busy, run } = useAction();
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="ວັດຖຸດິບໃໝ່"
+      footer={
+        <Button
+          loading={busy}
+          disabled={!f.name.trim() || !f.unit.trim()}
+          onClick={async () => {
+            const r = await run(() => post<Ingredient>('/ingredients', f), 'ສ້າງວັດຖຸດິບແລ້ວ');
+            if (r) onCreated(r);
+          }}
+        >
+          ສ້າງ ແລະ ໃຊ້ໃນສູດ
+        </Button>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="ຊື່"><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus maxLength={80} placeholder="ເຊັ່ນ ຊີ້ນງົວ, ເສັ້ນເຝີ" /></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="ຫົວໜ່ວຍ" hint="ກຣາມ, ມິນລິລິດ, ຂວດ, ຟອງ...">
+            <Input value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} maxLength={20} />
+          </Field>
+          <Field label="ຕົ້ນທຶນ/ຫົວໜ່ວຍ (₭)"><MoneyInput value={f.cost} onChange={(v) => setF({ ...f, cost: v })} /></Field>
+        </div>
+        <p className="text-xs text-slate-500">ໝວດ, ແພັກ ແລະ ສະຕັອກເລີ່ມຕົ້ນ ຕັ້ງຕໍ່ໄດ້ທີ່ໜ້າ "ສະຕັອກ"</p>
+      </div>
+    </Modal>
   );
 }

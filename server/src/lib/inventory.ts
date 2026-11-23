@@ -10,7 +10,7 @@ export type MoveType = 'in' | 'adjust' | 'waste' | 'sale';
 /** Apply a signed quantity to an ingredient and log it. For purchases (`in`) the unit cost is averaged in. */
 export function moveStock(
   db: Db,
-  p: { bid: number; ingredientId: number; type: MoveType; qty: number; unitCost?: number; note?: string; orderId?: number | null; uid?: number | null },
+  p: { bid: number; ingredientId: number; type: MoveType; qty: number; unitCost?: number; note?: string; lot?: string; expiresAt?: string | null; orderId?: number | null; uid?: number | null },
 ) {
   return db.tx(() => {
     const ing = db.get('SELECT * FROM ingredients WHERE id = ? AND branch_id = ?', p.ingredientId, p.bid);
@@ -24,8 +24,8 @@ export function moveStock(
     }
     db.run('UPDATE ingredients SET stock = ?, cost = ? WHERE id = ?', balance, cost, ing.id);
     db.run(
-      'INSERT INTO stock_moves (branch_id, ingredient_id, type, qty, unit_cost, balance, note, order_id, user_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
-      p.bid, ing.id, p.type, r3(p.qty), p.unitCost ?? cost, balance, p.note ?? '', p.orderId ?? null, p.uid ?? null, now(),
+      'INSERT INTO stock_moves (branch_id, ingredient_id, type, qty, unit_cost, balance, note, order_id, user_id, created_at, lot, expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+      p.bid, ing.id, p.type, r3(p.qty), p.unitCost ?? cost, balance, p.note ?? '', p.orderId ?? null, p.uid ?? null, now(), p.lot ?? '', p.expiresAt ?? null,
     );
     if (cost !== ing.cost) syncCostsForIngredient(db, ing.id);
     return { balance, cost };

@@ -3,6 +3,7 @@ import type { Db, Row } from '../db.ts';
 import { now } from '../db.ts';
 import { bad, calcTotals, conflict, notFound, type DiscountType } from './core.ts';
 import { deductForOrder, portionsMap } from './inventory.ts';
+import { promoDiscount } from './promos.ts';
 
 export function getBranch(db: Db, bid: number): Row {
   const b = db.get('SELECT * FROM branches WHERE id = ?', bid);
@@ -40,10 +41,19 @@ export function recalc(db: Db, orderId: number) {
     qty: number;
     status: string;
   }[];
+  // An attached promotion drives the discount (re-evaluated as items change); otherwise the manual discount applies.
+  let discountType = o.discount_type as DiscountType;
+  let discountValue = o.discount_value;
+  if (o.promo_id) {
+    const p = db.get('SELECT * FROM promotions WHERE id = ?', o.promo_id);
+    const sub = calcTotals({ items, discountType: 'none', discountValue: 0, serviceRate: 0, vatRate: 0 }).subtotal;
+    discountType = 'amount';
+    discountValue = p ? promoDiscount(p, sub) : 0;
+  }
   const t = calcTotals({
     items,
-    discountType: o.discount_type as DiscountType,
-    discountValue: o.discount_value,
+    discountType,
+    discountValue,
     serviceRate: o.type === 'dine_in' ? b.service_rate : 0,
     vatRate: b.vat_rate,
   });
@@ -271,6 +281,7 @@ export function payOrder(db: Db, p: { bid: number; uid: number; orderId: number;
     // Anything still in the kitchen pipeline is considered served once the bill is paid.
     db.run("UPDATE order_items SET status='served', updated_at=? WHERE order_id=? AND status IN ('pending','preparing','ready')", ts, o.id);
     deductForOrder(db, p.bid, o.id, p.uid);
+    if (o.promo_id) db.run('UPDATE promotions SET used_count = used_count + 1 WHERE id = ?', o.promo_id);
     db.audit(p.bid, p.uid, 'pay', 'order', o.id, { total: t.total, paid, change, payments: rows });
     return { billNo, total: t.total, paid, change };
   });
