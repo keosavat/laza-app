@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './app.ts';
 import { seedIfEmpty } from './seed.ts';
+import { backupDb, usersWithDefaultPassword } from './lib/security.ts';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dataDir = process.env.LAZA_DATA_DIR ?? path.join(root, 'data');
@@ -24,6 +25,22 @@ const { server, db, print } = createApp({
 });
 
 print.start();
+
+// One consistent copy of the database per day (kept 14 days). Copy the folder to a USB drive / cloud storage too.
+const backupDir = process.env.LAZA_BACKUP_DIR ?? path.join(dataDir, 'backups');
+const runBackup = () => {
+  try {
+    const f = backupDb(db, backupDir, Number(process.env.LAZA_BACKUP_KEEP ?? 14));
+    if (f) console.log(`Backup saved → ${f}`);
+  } catch (e) {
+    console.error('Backup failed:', e);
+  }
+};
+runBackup();
+setInterval(runBackup, 3_600_000).unref();
+
+const weak = usersWithDefaultPassword(db);
+if (weak.length) console.warn(`⚠ ເຕືອນ: ${weak.map((u) => u.username).join(', ')} ຍັງໃຊ້ລະຫັດຜ່ານທົດລອງ — ປ່ຽນໃນໜ້າ "ພະນັກງານ" ກ່ອນເປີດໃຫ້ເຂົ້າຈາກອິນເຕີເນັດ`);
 if (seedIfEmpty(db)) console.log('First run: demo restaurant created (see README for demo logins).');
 
 const port = Number(process.env.PORT ?? 4000);

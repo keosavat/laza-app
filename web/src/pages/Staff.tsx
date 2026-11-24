@@ -82,6 +82,7 @@ function UserModal({ user, self, isOwner, onClose, onSaved }: { user: Partial<St
     const body = user.id ? { name, role, active, ...(password ? { password } : {}) } : { name, username, password, role };
     if (await run(() => (user.id ? put(`/users/${user.id}`, body) : post('/users', body)), 'ບັນທຶກແລ້ວ')) {
       onSaved();
+      void useSession.getState().refresh(); // updates the default-password warning
       onClose();
     }
   };

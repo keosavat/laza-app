@@ -2,18 +2,26 @@
 import os from 'node:os';
 import { Router } from 'express';
 import type { Ctx } from '../app.ts';
-import { ROLES, checkPassword, hashPassword, requirePerm, type Role } from '../auth.ts';
+import { ROLES, can, checkPassword, hashPassword, requirePerm, type Role } from '../auth.ts';
 import { now } from '../db.ts';
 import { HttpError, bad, conflict, dayRange, forbidden, int, localDate, notFound, num, oneOf, str } from '../lib/core.ts';
 import { currentShift, getBranch, shiftCash } from '../lib/orders.ts';
+import { createLoginGuard, usersWithDefaultPassword } from '../lib/security.ts';
 
 export function authRoutes({ db, auth }: Ctx) {
   const r = Router();
+  const guard = createLoginGuard();
   r.post('/login', (req, res) => {
     const username = str(req.body.username, 'ຊື່ຜູ້ໃຊ້', { required: true, max: 60 }).toLowerCase();
     const password = str(req.body.password, 'ລະຫັດຜ່ານ', { required: true, max: 200 });
+    const ip = req.ip ?? 'unknown';
+    guard.check(ip, username);
     const u = db.get('SELECT * FROM users WHERE username = ?', username);
-    if (!u || !u.active || !checkPassword(password, u.password_hash)) throw new HttpError(401, 'ຊື່ຜູ້ໃຊ້ ຫຼື ລະຫັດຜ່ານບໍ່ຖືກຕ້ອງ');
+    if (!u || !u.active || !checkPassword(password, u.password_hash)) {
+      guard.fail(ip, username);
+      throw new HttpError(401, 'ຊື່ຜູ້ໃຊ້ ຫຼື ລະຫັດຜ່ານບໍ່ຖືກຕ້ອງ');
+    }
+    guard.ok(ip, username);
     const user = { uid: u.id, rid: u.restaurant_id, bid: u.branch_id, role: u.role as Role, name: u.name };
     db.audit(u.branch_id, u.id, 'login', 'user', u.id);
     res.json({ token: auth.sign(user), user });
@@ -32,6 +40,8 @@ export function opsRoutes({ db, emit, print }: Ctx) {
       branch: b,
       restaurant: rest,
       shift: currentShift(db, req.user.bid) ?? null,
+      // Owners/managers are warned while any account still uses the published demo password.
+      defaultPasswords: can(req.user.role, 'admin') ? usersWithDefaultPassword(db, req.user.rid) : [],
       printers: { kitchen: print.hasPrinter(req.user.bid, 'kitchen'), bill: print.hasPrinter(req.user.bid, 'bill') },
     });
   });

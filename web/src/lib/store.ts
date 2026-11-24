@@ -10,6 +10,8 @@ interface Session {
   shift: Shift | null;
   /** Which kinds of server-side printers this branch has (otherwise we fall back to browser printing). */
   printers: { kitchen: boolean; bill: boolean };
+  /** Accounts still using the published demo password (owners/managers only). */
+  defaultPasswords: { id: number; username: string; name: string }[];
   ready: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
@@ -36,6 +38,7 @@ export const useSession = create<Session>((set, getState) => ({
   restaurant: null,
   shift: null,
   printers: { kitchen: false, bill: false },
+  defaultPasswords: [],
   ready: false,
   async login(username, password) {
     const r = await post<{ token: string; user: User }>('/auth/login', { username, password });
@@ -49,7 +52,7 @@ export const useSession = create<Session>((set, getState) => ({
     try { navigator.serviceWorker?.controller?.postMessage('clear-api'); } catch { /* ignore */ }
     socket?.disconnect();
     socket = null;
-    set({ user: null, branch: null, restaurant: null, shift: null, ready: true });
+    set({ user: null, branch: null, restaurant: null, shift: null, defaultPasswords: [], ready: true });
   },
   async switchBranch(branchId) {
     const r = await post<{ token: string; user: User }>(`/branches/${branchId}/switch`, {});
@@ -63,9 +66,9 @@ export const useSession = create<Session>((set, getState) => ({
     const token = tokenStore.get();
     if (!token) return set({ ready: true });
     try {
-      const me = await get<{ user: User; branch: Branch; restaurant: Restaurant; shift: Shift | null; printers: { kitchen: boolean; bill: boolean } }>('/me');
+      const me = await get<{ user: User; branch: Branch; restaurant: Restaurant; shift: Shift | null; printers: { kitchen: boolean; bill: boolean }; defaultPasswords?: { id: number; username: string; name: string }[] }>('/me');
       if (!socket) connectSocket(token);
-      set({ ...me, ready: true });
+      set({ ...me, defaultPasswords: me.defaultPasswords ?? [], ready: true });
     } catch {
       set({ ready: true });
     }

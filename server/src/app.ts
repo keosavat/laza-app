@@ -20,6 +20,7 @@ import { depositRoutes } from './routes/deposits.ts';
 import { branchRoutes } from './routes/branches.ts';
 import { ownerRoutes } from './routes/owner.ts';
 import { createPrintService, type PrintService } from './print/service.ts';
+import { securityHeaders } from './lib/security.ts';
 
 export type Topic = 'orders' | 'tables' | 'kitchen' | 'menu' | 'shift' | 'settings' | 'qr' | 'print';
 
@@ -117,6 +118,12 @@ export function createApp(opts: AppOptions) {
   db.run("DELETE FROM idempotency WHERE created_at < ?", new Date(Date.now() - 3 * 86_400_000).toISOString());
 
   app.disable('x-powered-by');
+  // Behind a local tunnel (cloudflared) the real client address arrives in X-Forwarded-For.
+  app.set('trust proxy', 'loopback');
+  app.use(securityHeaders);
+  // Behind a local tunnel (cloudflared) the real client address arrives in X-Forwarded-For.
+  app.set('trust proxy', 'loopback');
+  app.use(securityHeaders);
   app.use(express.json({ limit: '3mb' }));
 
   app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'LAZA app' }));

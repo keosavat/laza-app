@@ -38,7 +38,7 @@ const NAV: { to: string; label: string; icon: typeof LayoutDashboard; perm: Perm
 ];
 
 export default function Layout() {
-  const { user, restaurant, branch, shift, logout } = useSession();
+  const { user, restaurant, branch, shift, logout, defaultPasswords } = useSession();
   const [open, setOpen] = useState(false);
   const nav = useNavigate();
   const items = NAV.filter((n) => can(user?.role, n.perm));
@@ -115,6 +115,12 @@ export default function Layout() {
           <span className="font-bold text-brand-700">LAZA app</span>
         </header>
         <OfflineBar />
+        {defaultPasswords.length > 0 && (
+          <button onClick={() => nav('/staff')} className="flex w-full items-center gap-2 bg-rose-600 px-4 py-2 text-left text-sm text-white">
+            <AlertTriangle className="size-4 shrink-0" />
+            <span>{defaultPasswords.length} ບັນຊີ ({defaultPasswords.map((u) => u.username).join(', ')}) ຍັງໃຊ້ລະຫັດຜ່ານທົດລອງ — ປ່ຽນໃນໜ້າ "ພະນັກງານ" ກ່ອນເປີດໃຫ້ເຂົ້າຈາກອິນເຕີເນັດ</span>
+          </button>
+        )}
         <main className="min-h-0 flex-1 overflow-y-auto">
           <Outlet />
         </main>
