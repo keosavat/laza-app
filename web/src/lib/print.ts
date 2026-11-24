@@ -130,3 +130,26 @@ export function printReceipt(order: Order, rest: Restaurant, branch: Branch, cas
      <hr><div class="c">${esc(branch.receipt_footer || '')}</div><div class="c s">Powered by LAZA app</div>`,
   );
 }
+
+export interface Slip {
+  title: string; no: string; customer: string; phone?: string;
+  rows: [string, string][]; big?: [string, string]; staff: string; note?: string; signatures?: boolean;
+}
+
+/** Slip for deposits: bottle/crate deposit taken or returned, beer stored or withdrawn. */
+export function printSlip(s: Slip, rest: Restaurant, branch: Branch) {
+  const rows = s.rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td class="r">${esc(v)}</td></tr>`).join('');
+  printHtml(
+    s.title,
+    `${header(rest, branch)}
+     <div class="c b" style="font-size:14px">${esc(s.title)}</div>
+     <div class="s c">${esc(s.no)} · ${dateTime(new Date().toISOString())}</div><hr>
+     <div class="b">${esc(s.customer)}</div>${s.phone ? `<div class="s">${esc(s.phone)}</div>` : ''}<hr>
+     <table>${rows}</table>
+     ${s.big ? `<hr><table><tr class="b big"><td>${esc(s.big[0])}</td><td class="r">${esc(s.big[1])}</td></tr></table>` : ''}
+     ${s.note ? `<div class="s">ໝາຍເຫດ: ${esc(s.note)}</div>` : ''}
+     <div class="s">ພະນັກງານ: ${esc(s.staff)}</div>
+     ${s.signatures ? '<br><br><table><tr><td class="c s">______________<br>ລູກຄ້າ</td><td class="c s">______________<br>ພະນັກງານ</td></tr></table>' : ''}
+     <hr><div class="c s">ກະລຸນາເກັບໃບນີ້ໄວ້ເປັນຫຼັກຖານ</div><div class="c s">Powered by LAZA app</div>`,
+  );
+}

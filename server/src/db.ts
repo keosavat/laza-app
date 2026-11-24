@@ -407,6 +407,44 @@ function migrate(raw: DatabaseSync) {
       created_at TEXT NOT NULL
     );
   `);
+  // Container deposits (bottles / crates a customer takes and later returns for a refund) and beer stored for a customer.
+  raw.exec(`
+    CREATE TABLE IF NOT EXISTS deposit_kinds (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      name TEXT NOT NULL,
+      amount INTEGER NOT NULL CHECK (amount > 0),
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS deposit_entries (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      customer_id INTEGER NOT NULL REFERENCES customers(id),
+      kind_id INTEGER NOT NULL REFERENCES deposit_kinds(id),
+      qty INTEGER NOT NULL,
+      amount INTEGER NOT NULL,
+      method TEXT NOT NULL DEFAULT 'cash',
+      shift_id INTEGER REFERENCES shifts(id),
+      note TEXT NOT NULL DEFAULT '',
+      user_id INTEGER REFERENCES users(id),
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_deposit_entries_cust ON deposit_entries(customer_id, id);
+    CREATE TABLE IF NOT EXISTS beer_storage (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      customer_id INTEGER NOT NULL REFERENCES customers(id),
+      item TEXT NOT NULL,
+      type TEXT NOT NULL CHECK (type IN ('store','withdraw','discard')),
+      qty INTEGER NOT NULL,
+      expires_on TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      user_id INTEGER REFERENCES users(id),
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_beer_storage_cust ON beer_storage(customer_id, id);
+  `);
   addColumn(raw, 'ingredients', 'supplier_id', 'INTEGER'); // usual supplier, used to group the reorder suggestions
   // Printing: category → kitchen printer routing, auto-print switch.
   addColumn(raw, 'categories', 'printer_id', 'INTEGER');

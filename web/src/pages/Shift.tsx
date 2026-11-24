@@ -81,6 +81,7 @@ export default function ShiftPage() {
             <Stat l="ເງິນທອນຕັ້ງຕົ້ນ" v={kip(s!.openingCash)} />
             <Stat l="+ ຮັບເງິນສົດ" v={kip(s!.cashIn)} />
             <Stat l="− ທອນໃຫ້ລູກຄ້າ" v={kip(s!.change)} />
+            {!!s!.depositCash && <Stat l={s!.depositCash > 0 ? '+ ມັດຈຳຂວດ/ຄັງ (ຮັບ − ຄືນ)' : '− ຄືນມັດຈຳຂວດ/ຄັງ (ສຸດທິ)'} v={kip(Math.abs(s!.depositCash))} />}
             <Stat l="= ເງິນທີ່ຄວນມີໃນລິ້ນຊັກ" v={kip(s!.expectedCash)} strong />
           </Card>
           <Card className="space-y-4 p-5">

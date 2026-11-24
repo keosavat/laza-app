@@ -58,7 +58,7 @@ export interface Shift {
   closed_at: string | null; counted_cash: number | null; expected_cash: number | null; note: string; closed_by_name?: string;
 }
 export interface ShiftSummary {
-  openingCash: number; cashIn: number; debtCharged?: number; debtCollected?: number; change: number; expectedCash: number; bills: number; salesTotal: number;
+  openingCash: number; cashIn: number; debtCharged?: number; debtCollected?: number; depositCash?: number; change: number; expectedCash: number; bills: number; salesTotal: number;
   byMethod: { method: PayMethod; currency: Currency; amount: number; amount_lak: number; n: number }[];
 }
 export interface CurrentShift extends Shift { summary: ShiftSummary; openOrders: { n: number; total: number } }

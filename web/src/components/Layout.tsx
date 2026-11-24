@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import {
-  LayoutDashboard, Armchair, ShoppingBag, ChefHat, Receipt, Wallet, UtensilsCrossed, LayoutGrid, Users, Settings, LogOut, Menu as MenuIcon, X, Printer, AlertTriangle, Boxes, ScrollText, Tag, HandCoins, FileBarChart, Contact, CalendarClock, Truck,
+  LayoutDashboard, Armchair, ShoppingBag, ChefHat, Receipt, Wallet, UtensilsCrossed, LayoutGrid, Users, Settings, LogOut, Menu as MenuIcon, X, Printer, AlertTriangle, Boxes, ScrollText, Tag, HandCoins, FileBarChart, Contact, CalendarClock, Truck, Beer,
 } from 'lucide-react';
 import { useSession } from '../lib/store';
 import { can, ROLE_LABEL, type Perm } from '../lib/format';
@@ -16,6 +16,7 @@ const NAV: { to: string; label: string; icon: typeof LayoutDashboard; perm: Perm
   { to: '/', label: 'ພາບລວມ', icon: LayoutDashboard, perm: 'reports' },
   { to: '/tables', label: 'ໂຕະ', icon: Armchair, perm: 'pos' },
   { to: '/reservations', label: 'ຈອງໂຕະ', icon: CalendarClock, perm: 'pos' },
+  { to: '/deposits', label: 'ມັດຈຳ / ຝາກເບຍ', icon: Beer, perm: 'pos' },
   { to: '/takeaway', label: 'ຂາຍໜ້າຮ້ານ / ກັບບ້ານ', icon: ShoppingBag, perm: 'pos' },
   { to: '/kitchen', label: 'ຄົວ', icon: ChefHat, perm: 'kitchen' },
   { to: '/orders', label: 'ປະຫວັດບິນ', icon: Receipt, perm: 'reports' },

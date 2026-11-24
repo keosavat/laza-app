@@ -78,7 +78,7 @@ export function debtRoutes({ db, emit }: Ctx) {
   r.delete('/customers/:id', requirePerm('admin'), (req, res) => {
     const c = getCustomer(db, int(req.params.id, 'id'), req.user.bid);
     if (balanceOf(db, c.id) > 0) throw bad('ລູກຄ້ານີ້ຍັງມີໜີ້ຄ້າງ — ຕ້ອງຮັບຊຳລະໃຫ້ຄົບກ່ອນ');
-    const used = db.get('SELECT 1 FROM debt_entries WHERE customer_id = ? UNION ALL SELECT 1 FROM point_entries WHERE customer_id = ? UNION ALL SELECT 1 FROM orders WHERE customer_id = ? LIMIT 1', c.id, c.id, c.id);
+    const used = db.get('SELECT 1 FROM debt_entries WHERE customer_id = ? UNION ALL SELECT 1 FROM point_entries WHERE customer_id = ? UNION ALL SELECT 1 FROM orders WHERE customer_id = ? UNION ALL SELECT 1 FROM deposit_entries WHERE customer_id = ? UNION ALL SELECT 1 FROM beer_storage WHERE customer_id = ? LIMIT 1', c.id, c.id, c.id, c.id, c.id);
     if (used) db.run('UPDATE customers SET active = 0 WHERE id = ?', c.id);
     else db.run('DELETE FROM customers WHERE id = ?', c.id);
     db.audit(req.user.bid, req.user.uid, 'delete', 'customer', c.id, { name: c.name });

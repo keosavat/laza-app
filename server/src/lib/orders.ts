@@ -344,5 +344,7 @@ export function shiftCash(db: Db, shiftId: number) {
     'SELECT COUNT(*) AS bills, COALESCE(SUM(total),0) AS total FROM orders WHERE id IN (SELECT DISTINCT order_id FROM payments WHERE shift_id = ?)',
     shiftId,
   )!;
-  return { debtCharged, debtCollected: debtCollected.v, openingCash: s.opening_cash, cashIn, change, expectedCash: s.opening_cash + cashIn - change, byMethod, bills: sales.bills, salesTotal: sales.total };
+  // Bottle/crate deposits taken (+) and refunded (−) in cash. Not sales: they are money held for the customer.
+  const depositCash = db.get("SELECT COALESCE(SUM(amount),0) AS v FROM deposit_entries WHERE shift_id = ? AND method = 'cash'", shiftId)!.v;
+  return { debtCharged, debtCollected: debtCollected.v, depositCash, openingCash: s.opening_cash, cashIn, change, expectedCash: s.opening_cash + cashIn - change + depositCash, byMethod, bills: sales.bills, salesTotal: sales.total };
 }
