@@ -25,6 +25,7 @@ import Staff from './pages/Staff';
 import SettingsPage from './pages/Settings';
 import Printers from './pages/Printers';
 import Inventory from './pages/Inventory';
+import Purchasing from './pages/Purchasing';
 import AuditLog from './pages/AuditLog';
 import Promotions from './pages/Promotions';
 import Debts from './pages/Debts';
@@ -69,6 +70,7 @@ function App() {
         <Route path="staff" element={<Guard perm="admin"><Staff /></Guard>} />
         <Route path="settings" element={<Guard perm="admin"><SettingsPage /></Guard>} />
         <Route path="inventory" element={<Guard perm="admin"><Inventory /></Guard>} />
+        <Route path="purchasing" element={<Guard perm="admin"><Purchasing /></Guard>} />
         <Route path="debts" element={<Guard perm="pay"><Debts /></Guard>} />
         <Route path="promotions" element={<Guard perm="admin"><Promotions /></Guard>} />
         <Route path="audit" element={<Guard perm="admin"><AuditLog /></Guard>} />

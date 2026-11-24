@@ -357,6 +357,57 @@ function migrate(raw: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_resv_day ON reservations(branch_id, reserved_date, reserved_time);
     CREATE INDEX IF NOT EXISTS idx_resv_table ON reservations(table_id, reserved_date);
   `);
+  // Procurement: suppliers, purchase orders (draft → ordered → partial/received) and what we paid them.
+  raw.exec(`
+    CREATE TABLE IF NOT EXISTS suppliers (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      name TEXT NOT NULL,
+      contact TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL DEFAULT '',
+      address TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS purchase_orders (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      po_no INTEGER NOT NULL,
+      supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
+      status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','ordered','partial','received','cancelled')),
+      expected_on TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      invoice_no TEXT NOT NULL DEFAULT '',
+      user_id INTEGER REFERENCES users(id),
+      created_at TEXT NOT NULL,
+      ordered_at TEXT,
+      received_at TEXT,
+      cancelled_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_po_no ON purchase_orders(branch_id, po_no);
+    CREATE TABLE IF NOT EXISTS po_lines (
+      id INTEGER PRIMARY KEY,
+      po_id INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+      ingredient_id INTEGER NOT NULL REFERENCES ingredients(id),
+      qty REAL NOT NULL CHECK (qty > 0),
+      unit_cost REAL NOT NULL DEFAULT 0,
+      received_qty REAL NOT NULL DEFAULT 0,
+      received_value REAL NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_po_lines_po ON po_lines(po_id);
+    CREATE TABLE IF NOT EXISTS supplier_payments (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      po_id INTEGER NOT NULL REFERENCES purchase_orders(id),
+      amount INTEGER NOT NULL CHECK (amount > 0),
+      method TEXT NOT NULL DEFAULT 'cash',
+      note TEXT NOT NULL DEFAULT '',
+      user_id INTEGER REFERENCES users(id),
+      created_at TEXT NOT NULL
+    );
+  `);
+  addColumn(raw, 'ingredients', 'supplier_id', 'INTEGER'); // usual supplier, used to group the reorder suggestions
   // Printing: category → kitchen printer routing, auto-print switch.
   addColumn(raw, 'categories', 'printer_id', 'INTEGER');
   addColumn(raw, 'branches', 'auto_kitchen_print', 'INTEGER NOT NULL DEFAULT 1');

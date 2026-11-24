@@ -434,7 +434,7 @@ function RecipeEditor({ itemId, price, onSaved }: { itemId: number; price: numbe
 }
 
 /** Searchable ingredient dropdown with a "create new" shortcut. */
-function IngredientPicker({ value, ings, onPick, onCreate }: { value: number; ings: Ingredient[]; onPick: (id: number) => void; onCreate: () => void }) {
+export function IngredientPicker({ value, ings, onPick, onCreate, placeholder, inline }: { value: number; ings: Ingredient[]; onPick: (id: number) => void; onCreate: () => void; placeholder?: string; inline?: boolean }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const cur = ings.find((i) => i.id === value);
@@ -442,13 +442,13 @@ function IngredientPicker({ value, ings, onPick, onCreate }: { value: number; in
   return (
     <div className="relative min-w-0 flex-1">
       <button type="button" onClick={() => { setOpen(!open); setQ(''); }} className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-left text-sm">
-        <span className={cx('truncate', !cur && 'text-slate-400')}>{cur?.name ?? 'ເລືອກວັດຖຸດິບ...'}</span>
+        <span className={cx('truncate', !cur && 'text-slate-400')}>{cur?.name ?? placeholder ?? 'ເລືອກວັດຖຸດິບ...'}</span>
         <ChevronsUpDown className="size-4 shrink-0 text-slate-400" />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-11 z-20 w-72 max-w-[80vw] rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+          <div className={cx('z-20 rounded-lg border border-slate-200 bg-white p-2 shadow-lg', inline ? 'relative mt-1 w-full' : 'absolute left-0 top-11 w-72 max-w-[80vw]')}>
             <div className="relative mb-1">
               <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
               <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="ຄົ້ນຫາ..." className="pl-8" />
@@ -473,7 +473,7 @@ function IngredientPicker({ value, ings, onPick, onCreate }: { value: number; in
 }
 
 /** Create an ingredient without leaving the recipe. */
-function QuickIngredient({ onClose, onCreated }: { onClose: () => void; onCreated: (i: Ingredient) => void }) {
+export function QuickIngredient({ onClose, onCreated, cta }: { onClose: () => void; onCreated: (i: Ingredient) => void; cta?: string }) {
   const [f, setF] = useState({ name: '', unit: 'ກຣາມ', cost: 0 });
   const { busy, run } = useAction();
   return (
@@ -490,7 +490,7 @@ function QuickIngredient({ onClose, onCreated }: { onClose: () => void; onCreate
             if (r) onCreated(r);
           }}
         >
-          ສ້າງ ແລະ ໃຊ້ໃນສູດ
+          {cta ?? 'ສ້າງ ແລະ ໃຊ້ໃນສູດ'}
         </Button>
       }
     >

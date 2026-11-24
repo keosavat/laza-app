@@ -78,7 +78,7 @@ export interface PrintJob {
 export interface Ingredient {
   id: number; name: string; unit: string; cost: number; stock: number; low_at: number; active: number;
   low: boolean; out: boolean; value: number; used_in: number;
-  category: string; pack_name: string; pack_size: number; refill_to: number; suggest: number; next_expiry: string | null;
+  category: string; pack_name: string; pack_size: number; refill_to: number; suggest: number; next_expiry: string | null; supplier_id: number | null;
 }
 export interface StockMove {
   id: number; ingredient_id: number; ingredient_name: string; unit: string; type: 'in' | 'adjust' | 'waste' | 'sale';

@@ -245,10 +245,11 @@ function Stat({ label, value, bad }: { label: string; value: string; bad?: boole
 }
 
 function IngredientModal({ ing, onClose, onSaved, onDelete }: { ing: Partial<Ingredient>; onClose: () => void; onSaved: () => void; onDelete?: () => void }) {
-  const [f, setF] = useState({ name: ing.name ?? '', unit: ing.unit ?? 'ກຣາມ', cost: ing.cost ?? 0, lowAt: ing.low_at ?? 0, refillTo: ing.refill_to ?? 0, category: ing.category ?? '', packName: ing.pack_name ?? '', packSize: ing.pack_size ?? 0, stock: 0, active: ing.active !== 0 });
+  const [f, setF] = useState({ name: ing.name ?? '', unit: ing.unit ?? 'ກຣາມ', cost: ing.cost ?? 0, lowAt: ing.low_at ?? 0, refillTo: ing.refill_to ?? 0, category: ing.category ?? '', packName: ing.pack_name ?? '', packSize: ing.pack_size ?? 0, stock: 0, active: ing.active !== 0, supplierId: ing.supplier_id ?? 0 });
+  const [suppliers] = useLoad(() => get<{ id: number; name: string; active: number }[]>('/suppliers'));
   const { busy, run } = useAction();
   const save = async () => {
-    const body = ing.id ? { name: f.name, unit: f.unit, cost: f.cost, lowAt: f.lowAt, refillTo: f.refillTo, category: f.category, packName: f.packName, packSize: f.packSize, active: f.active } : f;
+    const body = ing.id ? { name: f.name, unit: f.unit, cost: f.cost, lowAt: f.lowAt, refillTo: f.refillTo, category: f.category, packName: f.packName, packSize: f.packSize, active: f.active, supplierId: f.supplierId || null } : { ...f, supplierId: f.supplierId || null };
     if (await run(() => (ing.id ? put(`/ingredients/${ing.id}`, body) : post('/ingredients', body)), 'ບັນທຶກແລ້ວ')) {
       onSaved();
       onClose();
@@ -292,6 +293,12 @@ function IngredientModal({ ing, onClose, onSaved, onDelete }: { ing: Partial<Ing
           </Field>
           <Field label={`1 ${f.packName || 'ແພັກ'} = ກີ່ ${f.unit || 'ຫົວໜ່ວຍ'}`}>
             <Input type="number" min={0} value={f.packSize || ''} onChange={(e) => setF({ ...f, packSize: Number(e.target.value) || 0 })} placeholder="ເຊັ່ນ 1000" />
+          </Field>
+          <Field label="ຜູ້ສະໜອງປະຈຳ" hint="ໃຊ້ແບ່ງກຸ່ມໃບສັ່ງຊື້ແນະນຳ">
+            <Select value={f.supplierId} onChange={(e) => setF({ ...f, supplierId: Number(e.target.value) })}>
+              <option value={0}>— ບໍ່ລະບຸ —</option>
+              {(suppliers ?? []).filter((x) => x.active || x.id === f.supplierId).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </Select>
           </Field>
           {!ing.id && (
             <Field label="ສະຕັອກເລີ່ມຕົ້ນ">

@@ -34,20 +34,22 @@ export function inventoryRoutes({ db, emit }: Ctx) {
     pack_name: str(body.packName ?? prev?.pack_name ?? '', 'ຫົວໜ່ວຍແພັກ', { max: 20 }),
     pack_size: num(body.packSize ?? prev?.pack_size ?? 0, 'ຂະໜາດແພັກ', { min: 0, max: 1e9 }),
     refill_to: num(body.refillTo ?? prev?.refill_to ?? 0, 'ເຕີມໃຫ້ເຖິງ', { min: 0, max: 1e9 }),
+    supplier_id: (body.supplierId === undefined ? (prev?.supplier_id ?? null) : body.supplierId ? int(body.supplierId, 'ຜູ້ສະໜອງ') : null) as number | null,
     active: body.active === undefined ? (prev?.active ?? 1) : body.active ? 1 : 0,
   });
 
-  const checkRead = (v: ReturnType<typeof read>) => {
+  const checkRead = (v: ReturnType<typeof read>, bid: number) => {
     if (!!v.pack_name !== v.pack_size > 0) throw bad('ກະລຸນາໃສ່ທັງຊື່ແພັກ ແລະ ຂະໜາດແພັກ (ຫຼື ປ່ອຍວ່າງທັງສອງ)');
     if (v.refill_to > 0 && v.refill_to < v.low_at) throw bad('"ເຕີມໃຫ້ເຖິງ" ຕ້ອງບໍ່ໜ້ອຍກວ່າ "ແຈ້ງເຕືອນເມື່ອເຫຼືອ"');
+    if (v.supplier_id && !db.get('SELECT 1 FROM suppliers WHERE id = ? AND branch_id = ?', v.supplier_id, bid)) throw notFound('ບໍ່ພົບຜູ້ສະໜອງ');
   };
 
   r.post('/ingredients', requirePerm('admin'), (req, res) => {
     const v = read(req.body ?? {});
-    checkRead(v);
+    checkRead(v, req.user.bid);
     const start = req.body.stock === undefined ? 0 : num(req.body.stock, 'ສະຕັອກເລີ່ມຕົ້ນ', { min: 0, max: 1e9 });
     const id = db.tx(() => {
-      const { id } = db.run('INSERT INTO ingredients (branch_id, name, unit, cost, stock, low_at, active, created_at, category, pack_name, pack_size, refill_to) VALUES (?,?,?,?,0,?,?,?,?,?,?,?)', req.user.bid, v.name, v.unit, v.cost, v.low_at, v.active, now(), v.category, v.pack_name, v.pack_size, v.refill_to);
+      const { id } = db.run('INSERT INTO ingredients (branch_id, name, unit, cost, stock, low_at, active, created_at, category, pack_name, pack_size, refill_to, supplier_id) VALUES (?,?,?,?,0,?,?,?,?,?,?,?,?)', req.user.bid, v.name, v.unit, v.cost, v.low_at, v.active, now(), v.category, v.pack_name, v.pack_size, v.refill_to, v.supplier_id);
       if (start > 0) moveStock(db, { bid: req.user.bid, ingredientId: id, type: 'adjust', qty: start, note: 'ສະຕັອກເລີ່ມຕົ້ນ', uid: req.user.uid });
       db.audit(req.user.bid, req.user.uid, 'create', 'ingredient', id, v);
       return id;
@@ -60,9 +62,9 @@ export function inventoryRoutes({ db, emit }: Ctx) {
     const prev = db.get('SELECT * FROM ingredients WHERE id = ? AND branch_id = ?', int(req.params.id, 'id'), req.user.bid);
     if (!prev) throw notFound('ບໍ່ພົບວັດຖຸດິບ');
     const v = read(req.body ?? {}, prev);
-    checkRead(v);
+    checkRead(v, req.user.bid);
     db.tx(() => {
-      db.run('UPDATE ingredients SET name=?, unit=?, cost=?, low_at=?, active=?, category=?, pack_name=?, pack_size=?, refill_to=? WHERE id=?', v.name, v.unit, v.cost, v.low_at, v.active, v.category, v.pack_name, v.pack_size, v.refill_to, prev.id);
+      db.run('UPDATE ingredients SET name=?, unit=?, cost=?, low_at=?, active=?, category=?, pack_name=?, pack_size=?, refill_to=?, supplier_id=? WHERE id=?', v.name, v.unit, v.cost, v.low_at, v.active, v.category, v.pack_name, v.pack_size, v.refill_to, v.supplier_id, prev.id);
       if (v.cost !== prev.cost) syncCostsForIngredient(db, prev.id);
       db.audit(req.user.bid, req.user.uid, 'update', 'ingredient', prev.id, v);
     });
