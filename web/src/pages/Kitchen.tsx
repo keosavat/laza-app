@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
-import { get, post, type ItemStatus, type KitchenItem } from '../lib/api';
+import { get, post, wasQueued, type ItemStatus, type KitchenItem } from '../lib/api';
 import { useSync } from '../lib/store';
 import { since, STATUS_LABEL, time } from '../lib/format';
 import { beep } from '../lib/sound';
@@ -42,7 +42,8 @@ export default function Kitchen() {
     const next = NEXT[it.status];
     if (!next) return;
     try {
-      await post(`/order-items/${it.id}/status`, { status: next });
+      const r = await post(`/order-items/${it.id}/status`, { status: next }, { queue: `ຈໍຄົວ: ${it.name}` });
+      if (wasQueued(r)) toast.ok('ເກັບໄວ້ ຈະສົ່ງເມື່ອເຊື່ອມຕໍ່ເຊີບເວີໄດ້');
       reload();
     } catch (e) {
       toast.err(e);

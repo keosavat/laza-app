@@ -3,7 +3,7 @@ import { CheckCircle2, AlertTriangle, Pencil, Plus, Printer as PrinterIcon, Refr
 import { del, get, post, put, type Printer, type PrintJob } from '../lib/api';
 import { useSession, useSync } from '../lib/store';
 import { dateTime, since } from '../lib/format';
-import { Badge, Button, Card, Empty, Field, Input, Modal, PageHeader, Select, Spinner, cx, toast, useAction, useLoad } from '../components/ui';
+import { Badge, Button, Card, Empty, Field, Input, Modal, PageHeader, Select, Spinner, cx, toast, useAction, useLoad , ask } from '../components/ui';
 
 const ROLE: Record<Printer['role'], string> = { kitchen: 'ຄົວ / ບາ (ໃບສັ່ງ)', bill: 'ໜ້າຮ້ານ (ບິນ + ໃບຮັບເງິນ)' };
 const JOB: Record<PrintJob['type'], string> = { kitchen: 'ໃບຄົວ', bill: 'ໃບແຈ້ງຍອດ', receipt: 'ໃບຮັບເງິນ', test: 'ທົດສອບ' };
@@ -213,7 +213,7 @@ function PrinterModal({ printer, onClose, onSaved }: { printer: Partial<Printer>
               variant="ghost"
               className="mr-auto text-rose-600"
               onClick={async () => {
-                if (!confirm(`ລຶບເຄື່ອງພິມ ${printer.name}?`)) return;
+                if (!(await ask(`ລຶບເຄື່ອງພິມ ${printer.name}?`))) return;
                 if (await run(() => del(`/printers/${printer.id}`), 'ລຶບແລ້ວ')) {
                   onSaved();
                   onClose();

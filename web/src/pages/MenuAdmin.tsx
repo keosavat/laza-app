@@ -3,7 +3,7 @@ import { Pencil, Plus, Trash2, ImagePlus, X, Search, ChevronsUpDown, Check } fro
 import { del, get, post, put, type Category, type Ingredient, type MenuItem, type OptionGroup, type Printer, type Recipe } from '../lib/api';
 import { useSync } from '../lib/store';
 import { kip } from '../lib/format';
-import { Badge, Button, Card, Empty, Field, Input, Modal, MoneyInput, PageHeader, Select, Spinner, cx, toast, useAction, useLoad } from '../components/ui';
+import { Badge, Button, Card, Empty, Field, Input, Modal, MoneyInput, PageHeader, Select, Spinner, cx, toast, useAction, useLoad , ask } from '../components/ui';
 
 export default function MenuAdmin() {
   const [data, reload, loading] = useLoad(async () => {
@@ -96,7 +96,7 @@ export default function MenuAdmin() {
                         </button>
                         <button
                           onClick={async () => {
-                            if (!confirm(`ລຶບ "${i.name}"?`)) return;
+                            if (!(await ask(`ລຶບ "${i.name}"?`))) return;
                             const r = await run(() => del<{ deactivated: boolean }>(`/menu-items/${i.id}`));
                             if (r) toast.ok(r.deactivated ? 'ເມນູນີ້ເຄີຍຂາຍແລ້ວ ຈຶ່ງປິດການຂາຍແທນການລຶບ' : 'ລຶບແລ້ວ');
                             reload();
@@ -164,7 +164,7 @@ function CategoryModal({ cat, onClose, onSaved }: { cat: Partial<Category>; onCl
               variant="ghost"
               className="mr-auto text-rose-600"
               onClick={async () => {
-                if (!confirm('ລຶບໝວດນີ້?')) return;
+                if (!(await ask('ລຶບໝວດນີ້?'))) return;
                 if (await run(() => del(`/categories/${cat.id}`), 'ລຶບແລ້ວ')) {
                   onSaved();
                   onClose();

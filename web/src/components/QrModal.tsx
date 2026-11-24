@@ -5,7 +5,7 @@ import { del, post, type Order } from '../lib/api';
 import { useSession } from '../lib/store';
 import { dateTime } from '../lib/format';
 import { printTableQr } from '../lib/print';
-import { Button, Modal, Select, Spinner, toast, useAction } from './ui';
+import { Button, Modal, Select, Spinner, toast, useAction , ask } from './ui';
 
 export const DURATIONS: [number, string][] = [
   [0, 'ບໍ່ຈຳກັດ (ຈົນຊຳລະເງິນ)'],
@@ -35,11 +35,11 @@ export default function QrModal({ order, onClose, onChanged }: { order: Order; o
   }, [url]);
 
   const issue = async () => {
-    if (token && !confirm('ສ້າງ QR ໃໝ່? QR ເກົ່າທີ່ວາງໃນໂຕະຈະໃຊ້ບໍ່ໄດ້ອີກ')) return;
+    if (token && !(await ask('ສ້າງ QR ໃໝ່? QR ເກົ່າທີ່ວາງໃນໂຕະຈະໃຊ້ບໍ່ໄດ້ອີກ'))) return;
     if (await run(() => post(`/orders/${order.id}/qr`, { durationHours: hours }), token ? 'ສ້າງ QR ໃໝ່ແລ້ວ' : 'ສ້າງ QR ແລ້ວ')) onChanged();
   };
   const revoke = async () => {
-    if (!confirm('ປິດ QR ນີ້? ລູກຄ້າຈະສັ່ງຜ່ານມືຖືບໍ່ໄດ້ອີກ')) return;
+    if (!(await ask('ປິດ QR ນີ້? ລູກຄ້າຈະສັ່ງຜ່ານມືຖືບໍ່ໄດ້ອີກ'))) return;
     if (await run(() => del(`/orders/${order.id}/qr`), 'ປິດ QR ແລ້ວ')) onChanged();
   };
   const copy = async () => {

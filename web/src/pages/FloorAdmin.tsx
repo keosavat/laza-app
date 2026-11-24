@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { del, get, post, put, type Table, type Zone } from '../lib/api';
 import { useSync } from '../lib/store';
-import { Button, Card, Empty, Field, Input, Modal, PageHeader, Select, Spinner, toast, useAction, useLoad } from '../components/ui';
+import { Button, Card, Empty, Field, Input, Modal, PageHeader, Select, Spinner, toast, useAction, useLoad , ask } from '../components/ui';
 
 export default function FloorAdmin() {
   const [data, reload, loading] = useLoad(async () => {
@@ -67,7 +67,7 @@ export default function FloorAdmin() {
                         </button>
                         <button
                           onClick={async () => {
-                            if (!confirm(`ລຶບໂຕະ ${t.name}?`)) return;
+                            if (!(await ask(`ລຶບໂຕະ ${t.name}?`))) return;
                             if (await run(() => del(`/tables/${t.id}`), 'ລຶບໂຕະແລ້ວ')) reload();
                           }}
                           className="rounded p-1 text-rose-500 hover:bg-rose-50"
@@ -147,7 +147,7 @@ function ZoneModal({ zone, onClose, onSaved }: { zone: Partial<Zone>; onClose: (
               variant="ghost"
               className="mr-auto text-rose-600"
               onClick={async () => {
-                if (!confirm('ລຶບໂຊນນີ້? ໂຕະໃນໂຊນຈະຍ້າຍໄປ "ບໍ່ມີໂຊນ"')) return;
+                if (!(await ask('ລຶບໂຊນນີ້? ໂຕະໃນໂຊນຈະຍ້າຍໄປ "ບໍ່ມີໂຊນ"'))) return;
                 if (await run(() => del(`/zones/${zone.id}`), 'ລຶບໂຊນແລ້ວ')) {
                   onSaved();
                   onClose();

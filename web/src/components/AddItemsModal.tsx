@@ -1,13 +1,13 @@
 // "Add more" dialog: pick dishes for an open order, then "order" or "order & print to kitchen".
 import { useState } from 'react';
 import { Printer, Send, ShoppingBasket } from 'lucide-react';
-import { post, type Order } from '../lib/api';
+import { post, wasQueued, type Order } from '../lib/api';
 import { useSession } from '../lib/store';
 import { kip } from '../lib/format';
 import { printKitchenTicket } from '../lib/print';
 import MenuPicker from './MenuPicker';
 import { CartLines, useCart } from './Cart';
-import { Button, Modal, toast } from './ui';
+import { Button, Modal, toast , ask } from './ui';
 
 export default function AddItemsModal({ order, onClose, onDone }: { order: Pick<Order, 'id' | 'type' | 'table_name' | 'queue_no' | 'guest_count'>; onClose: () => void; onDone: () => void }) {
   const { user, printers } = useSession();
@@ -15,15 +15,21 @@ export default function AddItemsModal({ order, onClose, onDone }: { order: Pick<
   const [busy, setBusy] = useState<'plain' | 'print' | null>(null);
   const where = order.type === 'dine_in' ? `ໂຕະ ${order.table_name}` : `ຄິວ ${order.queue_no}`;
 
-  const close = () => {
-    if (cart.qty && !confirm('ຍັງມີລາຍການໃນກະຕ່າທີ່ບໍ່ໄດ້ສັ່ງ. ປິດໂດຍບໍ່ສັ່ງບໍ?')) return;
+  const close = async () => {
+    if (cart.qty && !(await ask('ຍັງມີລາຍການໃນກະຕ່າທີ່ບໍ່ໄດ້ສັ່ງ. ປິດໂດຍບໍ່ສັ່ງບໍ?'))) return;
     onClose();
   };
 
   async function submit(print: boolean) {
     setBusy(print ? 'print' : 'plain');
     try {
-      const r = await post<{ itemIds: number[]; order: Order; printedByServer: boolean }>(`/orders/${order.id}/items`, { items: cart.payload(), print });
+      const r = await post<{ itemIds: number[]; order: Order; printedByServer: boolean }>(`/orders/${order.id}/items`, { items: cart.payload(), print }, { queue: `ສັ່ງເພີ່ມ ${where} (${cart.qty} ລາຍການ)` });
+      if (wasQueued(r)) {
+        toast.ok(`ເຊີບເວີຕິດຕໍ່ບໍ່ໄດ້ — ເກັບ ${cart.qty} ລາຍການໄວ້ແລ້ວ ຈະສົ່ງອັດຕະໂນມັດເມື່ອເຊື່ອມຕໍ່ (ຍັງບໍ່ໄດ້ພິມໃບຄົວ)`);
+        cart.clear();
+        onClose();
+        return;
+      }
       // No kitchen printer configured on the server: print from this device's browser instead.
       if (print && !r.printedByServer && !printers.kitchen) {
         printKitchenTicket(r.order, r.order.items.filter((i) => r.itemIds.includes(i.id)), user!.name);

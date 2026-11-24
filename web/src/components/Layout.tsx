@@ -7,6 +7,7 @@ import { useSession } from '../lib/store';
 import { can, ROLE_LABEL, type Perm } from '../lib/format';
 import { cx } from './ui';
 import QrAlerts from './QrAlerts';
+import OfflineBar from './OfflineBar';
 import { get } from '../lib/api';
 import { useSync } from '../lib/store';
 import { useLoad } from './ui';
@@ -102,6 +103,7 @@ export default function Layout() {
           </button>
           <span className="font-bold text-brand-700">LAZA app</span>
         </header>
+        <OfflineBar />
         <main className="min-h-0 flex-1 overflow-y-auto">
           <Outlet />
         </main>

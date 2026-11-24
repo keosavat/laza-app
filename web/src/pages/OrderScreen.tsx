@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRightLeft, Ban, Check, Percent, Tag, Printer, QrCode, Send, Wallet, ChefHat, X } from 'lucide-react';
 import QrModal from '../components/QrModal';
-import { del, get, post, type Order, type OrderItem, type FloorTable, type ItemStatus } from '../lib/api';
+import { del, get, post, wasQueued, type Order, type OrderItem, type FloorTable, type ItemStatus } from '../lib/api';
 import { useSession, useSync } from '../lib/store';
 import { can, dateTime, kip, since, STATUS_CLASS, STATUS_LABEL, time } from '../lib/format';
 import { device } from '../lib/device';
@@ -66,10 +66,14 @@ export default function OrderScreen() {
     const r = await run(() =>
       post<{ itemIds: number[]; order: Order; printedByServer: boolean }>(`/orders/${order!.id}/items`, {
         items: cartState.payload(),
-      }),
+      }, { queue: `ສັ່ງອາຫານ ${order!.type === 'dine_in' ? `ໂຕະ ${order!.table_name}` : `ຄິວ ${order!.queue_no}`} (${cartState.qty} ລາຍການ)` }),
     );
     if (!r) return undefined;
     cartState.clear();
+    if (wasQueued(r)) {
+      toast.ok('ເຊີບເວີຕິດຕໍ່ບໍ່ໄດ້ — ເກັບອໍເດີໄວ້ແລ້ວ ຈະສົ່ງອັດຕະໂນມັດເມື່ອເຊື່ອມຕໍ່ (ຍັງບໍ່ໄດ້ພິມໃບຄົວ)');
+      return undefined;
+    }
     // Server prints to the kitchen printers when configured; otherwise fall back to this device's browser printing.
     if (!r.printedByServer && !printers.kitchen && device.autoKitchenPrint) printKitchenTicket(r.order, r.order.items.filter((i) => r.itemIds.includes(i.id)), user!.name);
     toast.ok(`ສົ່ງເຂົ້າຄົວແລ້ວ ${r.itemIds.length} ລາຍການ${r.printedByServer ? ' · ກຳລັງພິມ' : ''}`);
@@ -86,9 +90,10 @@ export default function OrderScreen() {
   }
 
   async function setStatusFor(ids: number[], status: ItemStatus) {
-    const r = await run(() => post<Order>(`/orders/${order!.id}/items/status`, { itemIds: ids, status }), `ປ່ຽນສະຖານະ ${ids.length} ລາຍການແລ້ວ`);
+    const r = await run(() => post<Order>(`/orders/${order!.id}/items/status`, { itemIds: ids, status }, { queue: `ປ່ຽນສະຖານະ ${ids.length} ລາຍການ` }), `ປ່ຽນສະຖານະ ${ids.length} ລາຍການແລ້ວ`);
     if (r) {
       setSelected([]);
+      if (wasQueued(r)) toast.ok('ເກັບໄວ້ ຈະສົ່ງເມື່ອເຊື່ອມຕໍ່ເຊີບເວີໄດ້');
       reload();
     }
   }

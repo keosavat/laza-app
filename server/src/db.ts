@@ -245,6 +245,17 @@ function migrate(raw: DatabaseSync) {
   addColumn(raw, 'ingredients', 'refill_to', 'REAL NOT NULL DEFAULT 0');
   addColumn(raw, 'stock_moves', 'lot', "TEXT NOT NULL DEFAULT ''");
   addColumn(raw, 'stock_moves', 'expires_at', 'TEXT');
+  // Replay protection for requests queued while a device was offline.
+  raw.exec(`
+    CREATE TABLE IF NOT EXISTS idempotency (
+      key TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      status INTEGER NOT NULL,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, key)
+    );
+  `);
   // Customers and their credit accounts (debts).
   addColumn(raw, 'orders', 'debt_customer_id', 'INTEGER');
   addColumn(raw, 'orders', 'debt_amount', 'INTEGER NOT NULL DEFAULT 0');

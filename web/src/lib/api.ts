@@ -84,6 +84,8 @@ export interface Recipe {
 }
 export interface StaffUser { id: number; name: string; username: string; role: Role; active: number; created_at: string }
 
+import { enqueue, flushQueue, isQueueable, newKey, setSender, useNet } from './offline';
+
 const TOKEN_KEY = 'laza_token';
 export const tokenStore = {
   get: () => { try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; } },
@@ -98,17 +100,40 @@ export class ApiError extends Error {
 let onUnauthorized: () => void = () => {};
 export const setUnauthorizedHandler = (fn: () => void) => { onUnauthorized = fn; };
 
-export async function api<T = any>(method: string, url: string, body?: unknown): Promise<T> {
+export interface ApiOpts {
+  /** Hold this request and replay it later if the server cannot be reached (only for actions that are safe to delay). */
+  queue?: string;
+}
+/** What a queued call resolves to instead of the server's reply. */
+export interface Queued { queued: true }
+export const wasQueued = (r: unknown): r is Queued => !!r && typeof r === 'object' && (r as Queued).queued === true;
+
+const NETWORK_ERROR = 'ເຊື່ອມຕໍ່ເຊີບເວີບໍ່ໄດ້ — ກວດ Wi‑Fi/ເຊີບເວີ ແລ້ວລອງໃໝ່ (ຂໍ້ມູນໃນກະຕ່າຍັງຢູ່)';
+
+export async function api<T = any>(method: string, url: string, body?: unknown, opts?: ApiOpts): Promise<T> {
   const token = tokenStore.get();
+  const queueable = !!opts?.queue && method === 'POST' && isQueueable(url);
+  const key = queueable ? newKey() : undefined;
   let res: Response;
   try {
     res = await fetch('/api' + url, {
       method,
-      headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...(key ? { 'idempotency-key': key } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new ApiError(0, 'ເຊື່ອມຕໍ່ເຊີບເວີບໍ່ໄດ້ ກະລຸນາກວດອິນເຕີເນັດ');
+    useNet.getState().setOnline(false);
+    if (queueable) {
+      enqueue({ key: key!, method: 'POST', url, body, label: opts!.queue!, at: Date.now() });
+      return { queued: true } as T;
+    }
+    throw new ApiError(0, NETWORK_ERROR);
+  }
+  // The service worker answers from its cache when the server is unreachable: treat that as offline.
+  if (res.headers.get('x-laza-cache')) useNet.getState().setOnline(false);
+  else if (!useNet.getState().online) {
+    useNet.getState().setOnline(true);
+    flushQueue();
   }
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
@@ -119,8 +144,22 @@ export async function api<T = any>(method: string, url: string, body?: unknown):
   return data as T;
 }
 
+// How queued requests are replayed (same auth, same idempotency key as the first attempt).
+setSender(async (r) => {
+  const token = tokenStore.get();
+  const res = await fetch('/api' + r.url, {
+    method: r.method,
+    headers: { 'content-type': 'application/json', 'idempotency-key': r.key, ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(r.body),
+  });
+  if (res.status === 401) onUnauthorized();
+  if (res.ok) return { ok: true, status: res.status };
+  const j = await res.json().catch(() => null);
+  return { ok: false, status: res.status, error: j?.error };
+});
+
 export const get = <T,>(url: string) => api<T>('GET', url);
-export const post = <T,>(url: string, body: unknown = {}) => api<T>('POST', url, body);
+export const post = <T,>(url: string, body: unknown = {}, opts?: ApiOpts) => api<T>('POST', url, body, opts);
 export const put = <T,>(url: string, body: unknown) => api<T>('PUT', url, body);
 export const patch = <T,>(url: string, body: unknown) => api<T>('PATCH', url, body);
 export const del = <T,>(url: string) => api<T>('DELETE', url);

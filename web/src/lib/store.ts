@@ -43,6 +43,8 @@ export const useSession = create<Session>((set, getState) => ({
   },
   logout() {
     tokenStore.set('');
+    // Cached answers belong to the previous user: drop them (and any queued actions) on this device.
+    try { navigator.serviceWorker?.controller?.postMessage('clear-api'); } catch { /* ignore */ }
     socket?.disconnect();
     socket = null;
     set({ user: null, branch: null, restaurant: null, shift: null, ready: true });

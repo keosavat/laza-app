@@ -87,18 +87,42 @@ export function createApp(opts: AppOptions) {
     next();
   };
 
+  /**
+   * Idempotency-Key: a device that queued a request while offline may send it twice (the first reply was lost).
+   * The first outcome is stored and replayed for repeats, so nothing is ordered or changed twice.
+   */
+  const idempotency = (req: Request, res: Response, next: NextFunction) => {
+    const key = req.method === 'POST' ? String(req.get('idempotency-key') ?? '').slice(0, 80) : '';
+    if (!key || !req.user) return next();
+    const prev = db.get('SELECT status, body FROM idempotency WHERE user_id = ? AND key = ?', req.user.uid, key);
+    if (prev) return void res.status(prev.status).set('x-idempotent-replay', '1').type('json').send(prev.body);
+    const send = res.json.bind(res);
+    res.json = (body: unknown) => {
+      // Only remember definite outcomes (success or a rejected request), never server crashes.
+      if (res.statusCode < 500) {
+        try {
+          db.run('INSERT OR IGNORE INTO idempotency (key, user_id, status, body, created_at) VALUES (?,?,?,?,?)', key, req.user.uid, res.statusCode, JSON.stringify(body ?? null), new Date().toISOString());
+        } catch { /* best effort */ }
+      }
+      return send(body);
+    };
+    next();
+  };
+  // Keys are only needed for a day or two.
+  db.run("DELETE FROM idempotency WHERE created_at < ?", new Date(Date.now() - 3 * 86_400_000).toISOString());
+
   app.disable('x-powered-by');
   app.use(express.json({ limit: '3mb' }));
 
   app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'LAZA app' }));
   app.use('/api/auth', authRoutes(ctx));
   app.use('/api/public/qr', qrPublicRoutes(ctx));
-  app.use('/api', auth.middleware, customerSync, catalogRoutes(ctx), orderRoutes(ctx), qrStaffRoutes(ctx), printerRoutes(ctx), inventoryRoutes(ctx), promotionRoutes(ctx), debtRoutes(ctx), opsRoutes(ctx));
+  app.use('/api', auth.middleware, idempotency, customerSync, catalogRoutes(ctx), orderRoutes(ctx), qrStaffRoutes(ctx), printerRoutes(ctx), inventoryRoutes(ctx), promotionRoutes(ctx), debtRoutes(ctx), opsRoutes(ctx));
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'ບໍ່ພົບ API ນີ້')));
 
   // Serve the built web app (production) with SPA fallback.
   if (opts.webDist && fs.existsSync(opts.webDist)) {
-    app.use(express.static(opts.webDist, { index: false, maxAge: '1h' }));
+    app.use(express.static(opts.webDist, { index: false, maxAge: '1h', setHeaders: (res, file) => { if (/sw\.js$/.test(file)) res.setHeader('Cache-Control', 'no-cache'); } }));
     app.get(/^\/(?!api|socket\.io).*/, (_req, res) => res.sendFile(path.join(opts.webDist!, 'index.html')));
   }
 

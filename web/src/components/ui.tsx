@@ -176,6 +176,29 @@ export function Toaster() {
   );
 }
 
+// ---------- Confirm dialog (native confirm() is blocked in some embedded browsers) ----------
+const useAsk = create<{ text: string | null; resolve: ((v: boolean) => void) | null }>(() => ({ text: null, resolve: null }));
+/** In-app replacement for window.confirm: `if (!(await ask('...'))) return;` */
+export function ask(text: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    useAsk.getState().resolve?.(false);
+    useAsk.setState({ text, resolve });
+  });
+}
+export function AskHost() {
+  const { text, resolve } = useAsk();
+  if (text === null) return null;
+  const done = (v: boolean) => {
+    useAsk.setState({ text: null, resolve: null });
+    resolve?.(v);
+  };
+  return (
+    <Modal open onClose={() => done(false)} title="ຢືນຢັນ" footer={<><Button variant="secondary" onClick={() => done(false)}>ຍົກເລີກ</Button><Button onClick={() => done(true)}>ຕົກລົງ</Button></>}>
+      <p className="whitespace-pre-line text-sm text-slate-700">{text}</p>
+    </Modal>
+  );
+}
+
 // ---------- Data hook ----------
 /** Load data with `fn`; returns [data, reload, loading]. Errors are toasted. */
 export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []): [T | undefined, () => Promise<void>, boolean] {

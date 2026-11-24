@@ -4,7 +4,7 @@ import { del, get, post, put, type Ingredient, type StockMove } from '../lib/api
 import { useSync } from '../lib/store';
 import { dateTime, kip } from '../lib/format';
 import { Download } from 'lucide-react';
-import { Badge, Button, Card, Empty, Field, Input, Modal, MoneyInput, PageHeader, Select, Spinner, cx, toast, useAction, useLoad } from '../components/ui';
+import { Badge, Button, Card, Empty, Field, Input, Modal, MoneyInput, PageHeader, Select, Spinner, cx, toast, useAction, useLoad , ask } from '../components/ui';
 
 const MOVE: Record<StockMove['type'], [string, string]> = {
   in: ['ຮັບເຂົ້າ', 'bg-emerald-100 text-emerald-800'],
@@ -28,7 +28,7 @@ export default function Inventory() {
   const { run } = useAction();
   const remove = async (i: Ingredient) => {
     if (i.used_in > 0) return toast.err(`${i.name} ຢູ່ໃນສູດຂອງ ${i.used_in} ເມນູ — ເອົາອອກຈາກສູດກ່ອນ ຈຶ່ງລຶບໄດ້`);
-    if (!confirm(`ລຶບ ${i.name}?${i.stock > 0 ? `\nຍັງມີສະຕັອກ ${i.stock} ${i.unit} ຢູ່` : ''}`)) return;
+    if (!(await ask(`ລຶບ ${i.name}?${i.stock > 0 ? `\nຍັງມີສະຕັອກ ${i.stock} ${i.unit} ຢູ່` : ''}`))) return;
     const r = await run(() => del<{ deactivated: boolean }>(`/ingredients/${i.id}`));
     if (r) {
       toast.ok(r.deactivated ? 'ມີປະຫວັດແລ້ວ ຈຶ່ງປິດໃຊ້ແທນການລຶບ' : 'ລຶບແລ້ວ');

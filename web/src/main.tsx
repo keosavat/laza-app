@@ -3,8 +3,9 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import './index.css';
 import { useSession } from './lib/store';
+import { startConnectivity } from './lib/offline';
 import { can, type Perm } from './lib/format';
-import { Spinner, Toaster } from './components/ui';
+import { AskHost, Spinner, Toaster } from './components/ui';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Customer from './pages/Customer';
@@ -77,6 +78,13 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <App />
       <Toaster />
+      <AskHost />
     </BrowserRouter>
   </React.StrictMode>,
 );
+
+startConnectivity();
+// Service worker (production build only): the app opens and shows its last data even if the server is down for a while.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+}

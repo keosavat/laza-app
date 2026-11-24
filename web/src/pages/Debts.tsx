@@ -3,7 +3,7 @@ import { Plus, Pencil, Search } from 'lucide-react';
 import { del, get, post, put } from '../lib/api';
 import { useSession, useSync } from '../lib/store';
 import { can, dateTime, kip, METHOD_LABEL } from '../lib/format';
-import { Badge, Button, Card, Empty, Field, Input, Modal, MoneyInput, PageHeader, Select, Spinner, cx, toast, useAction, useLoad } from '../components/ui';
+import { Badge, Button, Card, Empty, Field, Input, Modal, MoneyInput, PageHeader, Select, Spinner, cx, toast, useAction, useLoad , ask } from '../components/ui';
 import type { Customer } from '../components/CustomerPicker';
 
 interface Entry {
@@ -181,7 +181,7 @@ function CustomerModal({ c, admin, onClose, onSaved }: { c: Partial<Customer>; a
     }
   };
   const remove = async () => {
-    if (!confirm(`ລຶບ ${c.name}?`)) return;
+    if (!(await ask(`ລຶບ ${c.name}?`))) return;
     const r = await run(() => del<{ deactivated: boolean }>(`/customers/${c.id}`));
     if (r) {
       toast.ok(r.deactivated ? 'ມີປະຫວັດແລ້ວ ຈຶ່ງປິດໃຊ້ແທນການລຶບ' : 'ລຶບແລ້ວ');

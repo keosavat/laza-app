@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { del, get, post, put } from '../lib/api';
 import { kip } from '../lib/format';
-import { Badge, Button, Card, Empty, Field, Input, Modal, MoneyInput, PageHeader, Select, Spinner, cx, toast, useAction, useLoad } from '../components/ui';
+import { Badge, Button, Card, Empty, Field, Input, Modal, MoneyInput, PageHeader, Select, Spinner, cx, toast, useAction, useLoad , ask } from '../components/ui';
 
 interface Promo {
   id: number; name: string; code: string; type: 'percent' | 'amount'; value: number; min_subtotal: number; max_discount: number;
@@ -78,7 +78,7 @@ export default function Promotions() {
           onDelete={
             edit.id
               ? async () => {
-                  if (!confirm(`ລຶບ ${edit.name}?`)) return;
+                  if (!(await ask(`ລຶບ ${edit.name}?`))) return;
                   const r = await run(() => del<{ deactivated: boolean }>(`/promotions/${edit.id}`));
                   if (r) {
                     toast.ok(r.deactivated ? 'ເຄີຍຖືກໃຊ້ແລ້ວ ຈຶ່ງປິດໃຊ້ແທນການລຶບ' : 'ລຶບແລ້ວ');
