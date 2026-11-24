@@ -6,6 +6,7 @@ import { Button, Input, cx, toast, useAction, useLoad } from './ui';
 
 export interface Customer {
   id: number; name: string; phone: string; note: string; credit_limit: number; active: number; balance: number; last_entry?: string | null;
+  birthday?: string; tags?: string; points?: number; visits?: number; spent?: number; last_visit?: string | null;
 }
 
 /** Pick a customer (search by name/phone) or create one on the spot. */
@@ -22,7 +23,7 @@ export default function CustomerPicker({ value, onPick }: { value: Customer | nu
         <span>
           <b>{value.name}</b> {value.phone && <span className="text-slate-500">· {value.phone}</span>}
           <span className="block text-xs text-slate-500">
-            ໜີ້ຄ້າງ {kip(value.balance)}{value.credit_limit > 0 && ` · ວົງເງິນ ${kip(value.credit_limit)}`}
+            ໜີ້ຄ້າງ {kip(value.balance)}{value.credit_limit > 0 && ` · ວົງເງິນ ${kip(value.credit_limit)}`}{!!value.points && ` · ${value.points.toLocaleString('en-US')} ຄະແນນ`}
           </span>
         </span>
         <button onClick={() => onPick(null)} className="text-xs text-slate-500 underline">ປ່ຽນ</button>
@@ -65,7 +66,7 @@ export default function CustomerPicker({ value, onPick }: { value: Customer | nu
             {shown.map((c) => (
               <button key={c.id} onClick={() => onPick(c)} className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100">
                 <span>{c.name} <span className="text-xs text-slate-400">{c.phone}</span></span>
-                <span className={cx('tabular text-xs', c.balance > 0 ? 'text-rose-600' : 'text-slate-400')}>{c.balance > 0 ? `ຄ້າງ ${kip(c.balance)}` : ''}</span>
+                <span className={cx('tabular text-xs', c.balance > 0 ? 'text-rose-600' : 'text-slate-400')}>{c.balance > 0 ? `ຄ້າງ ${kip(c.balance)}` : c.points ? `${c.points.toLocaleString('en-US')} ຄະແນນ` : ''}</span>
               </button>
             ))}
           </div>

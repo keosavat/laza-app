@@ -310,6 +310,30 @@ function migrate(raw: DatabaseSync) {
       created_at TEXT NOT NULL
     );
   `);
+  // CRM + loyalty points: profile fields, orders linked to a customer, a points ledger, earn/redeem rates per branch.
+  addColumn(raw, 'customers', 'birthday', "TEXT NOT NULL DEFAULT ''");
+  addColumn(raw, 'customers', 'tags', "TEXT NOT NULL DEFAULT ''");
+  addColumn(raw, 'orders', 'customer_id', 'INTEGER');
+  addColumn(raw, 'orders', 'points_used', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn(raw, 'orders', 'points_value', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn(raw, 'orders', 'points_earned', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn(raw, 'branches', 'loyalty_earn_per', 'INTEGER NOT NULL DEFAULT 0'); // ₭ spent per 1 point earned; 0 = loyalty off
+  addColumn(raw, 'branches', 'loyalty_redeem_value', 'INTEGER NOT NULL DEFAULT 0'); // ₭ discount per 1 point redeemed; 0 = redeeming off
+  raw.exec(`
+    CREATE TABLE IF NOT EXISTS point_entries (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      customer_id INTEGER NOT NULL REFERENCES customers(id),
+      type TEXT NOT NULL CHECK (type IN ('earn','redeem','adjust')),
+      points INTEGER NOT NULL,
+      order_id INTEGER REFERENCES orders(id),
+      note TEXT NOT NULL DEFAULT '',
+      user_id INTEGER REFERENCES users(id),
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_point_entries_cust ON point_entries(customer_id, id);
+    CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
+  `);
   // Printing: category → kitchen printer routing, auto-print switch.
   addColumn(raw, 'categories', 'printer_id', 'INTEGER');
   addColumn(raw, 'branches', 'auto_kitchen_print', 'INTEGER NOT NULL DEFAULT 1');

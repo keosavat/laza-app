@@ -151,7 +151,7 @@ export function orderRoutes({ db, emit, print }: Ctx) {
 
   r.post('/orders/:id/pay', requirePerm('pay'), (req, res) => {
     if (!Array.isArray(req.body.payments)) throw bad('ຂໍ້ມູນການຊຳລະບໍ່ຖືກຕ້ອງ');
-    if (req.body.payments.length === 0 && !(req.body.debt?.amount > 0)) throw bad('ກະລຸນາເລືອກວິທີຊຳລະ');
+    if (req.body.payments.length === 0 && !(req.body.debt?.amount > 0) && !(req.body.redeemPoints > 0)) throw bad('ກະລຸນາເລືອກວິທີຊຳລະ');
     const payments: PaymentInput[] = req.body.payments.map((p: any) => ({
       method: oneOf(p?.method, 'ວິທີຊຳລະ', ['cash', 'transfer', 'qr', 'card']),
       currency: oneOf(p?.currency ?? 'LAK', 'ສະກຸນເງິນ', ['LAK', 'USD', 'THB']),
@@ -159,7 +159,9 @@ export function orderRoutes({ db, emit, print }: Ctx) {
     }));
     const orderId = int(req.params.id, 'id');
     const debt = req.body.debt?.amount > 0 ? { customerId: int(req.body.debt.customerId, 'ລູກຄ້າ', { required: true }), amount: num(req.body.debt.amount, 'ຍອດຕິດໜີ້', { min: 1 }) } : null;
-    const result = payOrder(db, { bid: req.user.bid, uid: req.user.uid, orderId, payments, debt });
+    const customerId = req.body.customerId ? int(req.body.customerId, 'ລູກຄ້າ') : null;
+    const redeemPoints = req.body.redeemPoints ? int(req.body.redeemPoints, 'ຄະແນນ', { min: 0 }) : 0;
+    const result = payOrder(db, { bid: req.user.bid, uid: req.user.uid, orderId, payments, debt, customerId, redeemPoints });
     const tickets = req.body.print ? print.receipt(req.user.bid, orderId) : 0;
     changed(req.user.bid);
     res.json({ ...result, printedByServer: tickets > 0, order: orderDetail(db, orderId, req.user.bid) });

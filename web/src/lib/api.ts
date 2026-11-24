@@ -8,6 +8,7 @@ export interface Branch {
   vat_rate: number; service_rate: number; rate_usd: number; rate_thb: number;
   receipt_header: string; receipt_footer: string; bank_info: string; utc_offset_min: number;
   qr_enabled: number; qr_auto_confirm: number; public_url: string; auto_kitchen_print: number;
+  loyalty_earn_per: number; loyalty_redeem_value: number;
 }
 export interface Restaurant { id: number; name: string }
 export interface Category { id: number; name: string; sort: number; active: number; printer_id: number | null }
@@ -39,6 +40,7 @@ export interface Order {
   id: number; order_no: string; bill_no: string | null; type: 'dine_in' | 'takeaway'; table_id: number | null; table_name: string | null;
   queue_no: number | null; status: 'open' | 'paid' | 'cancelled'; customer_name: string; note: string;
   discount_type: 'none' | 'percent' | 'amount'; discount_value: number; promo_id?: number | null; promo_name?: string; debt_amount?: number; debt_customer_id?: number | null;
+  customer_id?: number | null; crm_name?: string | null; crm_phone?: string | null; points_used?: number; points_value?: number; points_earned?: number;
   subtotal: number; discount: number; service: number; vat: number; total: number; paid_total: number; change_lak: number;
   created_at: string; paid_at: string | null; bill_printed_at: string | null; created_by_name?: string;
   qr_token: string | null; qr_expires_at: string | null; guest_count: number;

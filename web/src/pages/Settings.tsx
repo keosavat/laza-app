@@ -30,6 +30,8 @@ export default function SettingsPage() {
       qr_enabled: b.qr_enabled,
       qr_auto_confirm: b.qr_auto_confirm,
       public_url: b.public_url,
+      loyalty_earn_per: b.loyalty_earn_per,
+      loyalty_redeem_value: b.loyalty_redeem_value,
     });
   }, [data]);
 
@@ -57,6 +59,11 @@ export default function SettingsPage() {
         <Field label="ຄ່າບໍລິການ (%)" hint="ໃຊ້ສະເພາະອໍເດີນັ່ງກິນໃນຮ້ານ"><Input type="number" min={0} max={100} step="0.1" value={f.service_rate} onChange={set('service_rate')} /></Field>
         <Field label="1 USD = ? ກີບ"><Input type="number" min={1} value={f.rate_usd} onChange={set('rate_usd')} /></Field>
         <Field label="1 THB = ? ກີບ"><Input type="number" min={1} value={f.rate_thb} onChange={set('rate_thb')} /></Field>
+      </Card>
+      <Card className="grid gap-4 p-5 md:grid-cols-2">
+        <h2 className="font-semibold md:col-span-2">ຄະແນນສະສົມ (ລູກຄ້າສະມາຊິກ)</h2>
+        <Field label="ໃຊ້ຈ່າຍທຸກໆ ? ກີບ ໄດ້ 1 ຄະແນນ" hint="0 = ປິດການສະສົມຄະແນນ. ເຊັ່ນ 10000 → ໃຊ້ 100,000 ໄດ້ 10 ຄະແນນ"><Input type="number" min={0} step="1000" value={f.loyalty_earn_per} onChange={set('loyalty_earn_per')} /></Field>
+        <Field label="1 ຄະແນນ ແລກເປັນສ່ວນຫຼຸດ ? ກີບ" hint="0 = ປິດການແລກຄະແນນ. ເຊັ່ນ 500 → 10 ຄະແນນ ຫຼຸດ 5,000 ກີບ"><Input type="number" min={0} step="100" value={f.loyalty_redeem_value} onChange={set('loyalty_redeem_value')} /></Field>
       </Card>
       <Card className="grid gap-4 p-5 md:grid-cols-2">
         <h2 className="font-semibold md:col-span-2">ໃບບິນ</h2>

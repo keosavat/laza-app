@@ -170,11 +170,11 @@ function Ledger({ id, admin, onClose, onChanged, onEdit }: { id: number; admin: 
   );
 }
 
-function CustomerModal({ c, admin, onClose, onSaved }: { c: Partial<Customer>; admin: boolean; onClose: () => void; onSaved: () => void }) {
-  const [f, setF] = useState({ name: c.name ?? '', phone: c.phone ?? '', note: c.note ?? '', creditLimit: c.credit_limit ?? 0, active: c.active !== 0 });
+export function CustomerModal({ c, admin, onClose, onSaved }: { c: Partial<Customer>; admin: boolean; onClose: () => void; onSaved: () => void }) {
+  const [f, setF] = useState({ name: c.name ?? '', phone: c.phone ?? '', note: c.note ?? '', creditLimit: c.credit_limit ?? 0, active: c.active !== 0, birthday: c.birthday ?? '', tags: c.tags ?? '' });
   const { busy, run } = useAction();
   const save = async () => {
-    const body = { name: f.name, phone: f.phone, note: f.note, creditLimit: f.creditLimit, active: f.active };
+    const body = { name: f.name, phone: f.phone, note: f.note, creditLimit: f.creditLimit, active: f.active, birthday: f.birthday, tags: f.tags };
     if (await run(() => (c.id ? put(`/customers/${c.id}`, body) : post('/customers', body)), 'ບັນທຶກແລ້ວ')) {
       onSaved();
       onClose();
@@ -204,6 +204,10 @@ function CustomerModal({ c, admin, onClose, onSaved }: { c: Partial<Customer>; a
       <div className="space-y-4">
         <Field label="ຊື່"><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus maxLength={80} /></Field>
         <Field label="ເບີໂທ"><Input value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} maxLength={30} /></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="ວັນເກີດ"><Input type="date" value={f.birthday} onChange={(e) => setF({ ...f, birthday: e.target.value })} /></Field>
+          <Field label="ປ້າຍກຳກັບ" hint="ແຍກດ້ວຍ , ເຊັ່ນ VIP, ມັງສະວິຣັດ"><Input value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} maxLength={100} /></Field>
+        </div>
         {admin && <Field label="ວົງເງິນຕິດໜີ້ສູງສຸດ (₭, 0 = ບໍ່ຈຳກັດ)"><MoneyInput value={f.creditLimit} onChange={(v) => setF({ ...f, creditLimit: v })} /></Field>}
         <Field label="ໝາຍເຫດ"><Input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} maxLength={200} /></Field>
         {c.id && (

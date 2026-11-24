@@ -4,7 +4,8 @@ import { now } from '../db.ts';
 import { bad, calcTotals, conflict, notFound, type DiscountType } from './core.ts';
 import { deductForOrder, portionsMap } from './inventory.ts';
 import { promoDiscount } from './promos.ts';
-import { chargeDebt } from './debts.ts';
+import { chargeDebt, getCustomer } from './debts.ts';
+import { addPoints, checkRedeem, earnedFor } from './loyalty.ts';
 
 export function getBranch(db: Db, bid: number): Row {
   const b = db.get('SELECT * FROM branches WHERE id = ?', bid);
@@ -75,8 +76,8 @@ const parseItem = (it: Row) => ({ ...it, options: JSON.parse(it.options_json || 
 
 export function orderDetail(db: Db, orderId: number, bid: number) {
   const o = db.get(
-    `SELECT o.*, t.name AS table_name, u.name AS created_by_name
-       FROM orders o LEFT JOIN tables t ON t.id = o.table_id LEFT JOIN users u ON u.id = o.created_by
+    `SELECT o.*, t.name AS table_name, u.name AS created_by_name, c.name AS crm_name, c.phone AS crm_phone
+       FROM orders o LEFT JOIN tables t ON t.id = o.table_id LEFT JOIN users u ON u.id = o.created_by LEFT JOIN customers c ON c.id = o.customer_id
       WHERE o.id = ? AND o.branch_id = ?`,
     orderId,
     bid,
@@ -235,9 +236,10 @@ export interface PaymentInput {
   amount: number;
 }
 
-export function payOrder(db: Db, p: { bid: number; uid: number; orderId: number; payments: PaymentInput[]; debt?: { customerId: number; amount: number } | null }) {
+export function payOrder(db: Db, p: { bid: number; uid: number; orderId: number; payments: PaymentInput[]; debt?: { customerId: number; amount: number } | null; customerId?: number | null; redeemPoints?: number }) {
   const debtAmt = p.debt ? Math.round(p.debt.amount) : 0;
-  if (!p.payments.length && !(debtAmt > 0)) throw bad('ກະລຸນາເລືອກວິທີຊຳລະ');
+  const redeemPts = Math.max(0, Math.floor(p.redeemPoints ?? 0));
+  if (!p.payments.length && !(debtAmt > 0) && !(redeemPts > 0)) throw bad('ກະລຸນາເລືອກວິທີຊຳລະ');
   return db.tx(() => {
     const shift = requireShift(db, p.bid);
     const o = loadOrder(db, p.orderId, p.bid);
@@ -253,7 +255,12 @@ export function payOrder(db: Db, p: { bid: number; uid: number; orderId: number;
     const paid = rows.reduce((s, x) => s + x.amount_lak, 0);
     const cash = rows.filter((x) => x.method === 'cash').reduce((s, x) => s + x.amount_lak, 0);
     if (debtAmt > t.total) throw bad('ຍອດຕິດໜີ້ເກີນຍອດບິນ');
-    const due = t.total - debtAmt;
+    // The customer on the bill: picked at checkout, else the debtor, else one attached earlier.
+    const customerId: number | null = p.customerId ?? p.debt?.customerId ?? o.customer_id ?? null;
+    const customer = customerId ? getCustomer(db, customerId, p.bid) : null;
+    if (customer && !customer.active) throw bad('ລູກຄ້ານີ້ຖືກປິດໃຊ້ງານ');
+    const pointsValue = checkRedeem(db, { redeemValue: b.loyalty_redeem_value, customerId, points: redeemPts, maxValue: t.total - debtAmt });
+    const due = t.total - debtAmt - pointsValue;
     if (paid < due) throw bad(`ຍອດຊຳລະບໍ່ພໍ: ຂາດອີກ ${(due - paid).toLocaleString('en-US')} ກີບ`);
     const change = paid - due;
     if (change > cash) throw bad('ເງິນທອນໄດ້ສະເພາະການຈ່າຍເງິນສົດ: ຍອດໂອນ/QR/ບັດ ເກີນຍອດບິນ');
@@ -271,10 +278,13 @@ export function payOrder(db: Db, p: { bid: number; uid: number; orderId: number;
         ts,
       );
     }
+    if (customer && redeemPts > 0) addPoints(db, { bid: p.bid, uid: p.uid, customerId: customer.id, type: 'redeem', points: -redeemPts, orderId: o.id });
+    const earned = customer ? earnedFor(b.loyalty_earn_per, t.total - pointsValue) : 0;
+    if (customer && earned > 0) addPoints(db, { bid: p.bid, uid: p.uid, customerId: customer.id, type: 'earn', points: earned, orderId: o.id });
     if (debtAmt > 0) chargeDebt(db, { bid: p.bid, uid: p.uid, customerId: p.debt!.customerId, orderId: o.id, amount: debtAmt });
     const billNo = 'B' + String(nextSeq(db, p.bid, 'bill_seq')).padStart(6, '0');
     db.run(
-      "UPDATE orders SET status='paid', bill_no=?, paid_total=?, change_lak=?, paid_at=?, paid_by=?, updated_at=?, debt_customer_id=?, debt_amount=? WHERE id=?",
+      "UPDATE orders SET status='paid', bill_no=?, paid_total=?, change_lak=?, paid_at=?, paid_by=?, updated_at=?, debt_customer_id=?, debt_amount=?, customer_id=?, points_used=?, points_value=?, points_earned=? WHERE id=?",
       billNo,
       paid,
       change,
@@ -283,14 +293,18 @@ export function payOrder(db: Db, p: { bid: number; uid: number; orderId: number;
       ts,
       debtAmt > 0 ? p.debt!.customerId : null,
       debtAmt,
+      customer?.id ?? null,
+      customer && redeemPts > 0 ? redeemPts : 0,
+      pointsValue,
+      earned,
       o.id,
     );
     // Anything still in the kitchen pipeline is considered served once the bill is paid.
     db.run("UPDATE order_items SET status='served', updated_at=? WHERE order_id=? AND status IN ('pending','preparing','ready')", ts, o.id);
     deductForOrder(db, p.bid, o.id, p.uid);
     if (o.promo_id) db.run('UPDATE promotions SET used_count = used_count + 1 WHERE id = ?', o.promo_id);
-    db.audit(p.bid, p.uid, 'pay', 'order', o.id, { total: t.total, paid, change, debt: debtAmt || undefined, payments: rows });
-    return { billNo, total: t.total, paid, change };
+    db.audit(p.bid, p.uid, 'pay', 'order', o.id, { total: t.total, paid, change, debt: debtAmt || undefined, customer: customer?.id, pointsUsed: redeemPts || undefined, pointsEarned: earned || undefined, payments: rows });
+    return { billNo, total: t.total, paid, change, pointsEarned: earned, pointsValue };
   });
 }
 

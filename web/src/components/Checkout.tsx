@@ -28,9 +28,19 @@ export default function Checkout({ order, onClose, onPaid }: { order: Order; onC
   const [busy, setBusy] = useState(false);
   const [onCredit, setOnCredit] = useState(false);
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const [member, setMember] = useState(false);
+  const [redeem, setRedeem] = useState(0);
+  const earnPer = branch!.loyalty_earn_per;
+  const redeemValue = branch!.loyalty_redeem_value;
+  const useCustomer = member || onCredit ? customer : null;
+  // Points a customer can spend on this bill, and what they are worth.
+  const maxRedeem = useCustomer && redeemValue > 0 ? Math.min(useCustomer.points ?? 0, Math.floor(order.total / redeemValue)) : 0;
+  const redeemPts = Math.min(redeem, maxRedeem);
+  const pointsValue = redeemPts * redeemValue;
+  const net = order.total - pointsValue;
 
   const paidLak = lines.reduce((s, l) => s + Math.round(l.amount * rate(l.currency)), 0);
-  const remaining = Math.max(order.total - paidLak, 0);
+  const remaining = Math.max(net - paidLak, 0);
   const remainingIn = (c: Currency) => (c === 'LAK' ? remaining : Math.ceil((remaining / rate(c)) * 100) / 100);
   const entryAmount = entry === '' ? remainingIn(currency) : Number(entry);
   // On credit: the amount typed is what is paid now; the rest goes on the customer's account.
@@ -38,9 +48,10 @@ export default function Checkout({ order, onClose, onPaid }: { order: Order; onC
   const all = pending ? [...lines, pending] : lines;
   const totalLak = all.reduce((s, l) => s + Math.round(l.amount * rate(l.currency)), 0);
   const cashLak = all.filter((l) => l.method === 'cash').reduce((s, l) => s + Math.round(l.amount * rate(l.currency)), 0);
-  const debtLak = onCredit ? Math.max(order.total - totalLak, 0) : 0;
-  const change = totalLak - (order.total - debtLak);
-  const problem = onCredit && debtLak > 0 && !customer ? 'ກະລຸນາເລືອກລູກຄ້າທີ່ຕິດໜີ້' : totalLak < order.total && !onCredit ? `ຍັງຂາດ ${kip(order.total - totalLak)}` : change > cashLak ? 'ເງິນທອນໄດ້ສະເພາະເງິນສົດ' : '';
+  const debtLak = onCredit ? Math.max(net - totalLak, 0) : 0;
+  const change = totalLak - (net - debtLak);
+  const earnNow = useCustomer && earnPer > 0 ? Math.floor(net / earnPer) : 0;
+  const problem = onCredit && debtLak > 0 && !customer ? 'ກະລຸນາເລືອກລູກຄ້າທີ່ຕິດໜີ້' : totalLak < net && !onCredit ? `ຍັງຂາດ ${kip(net - totalLak)}` : change > cashLak ? 'ເງິນທອນໄດ້ສະເພາະເງິນສົດ' : '';
 
   const quick = useMemo(() => {
     if (currency !== 'LAK') return [];
@@ -63,10 +74,16 @@ export default function Checkout({ order, onClose, onPaid }: { order: Order; onC
     if (problem) return toast.err(problem);
     setBusy(true);
     try {
-      const r = await post<{ order: Order; change: number; printedByServer: boolean }>(`/orders/${order.id}/pay`, { payments: all, print: printIt, ...(debtLak > 0 && customer ? { debt: { customerId: customer.id, amount: debtLak } } : {}) });
+      const r = await post<{ order: Order; change: number; printedByServer: boolean; pointsEarned: number }>(`/orders/${order.id}/pay`, {
+        payments: all,
+        print: printIt,
+        ...(useCustomer ? { customerId: useCustomer.id } : {}),
+        ...(redeemPts > 0 ? { redeemPoints: redeemPts } : {}),
+        ...(debtLak > 0 && customer ? { debt: { customerId: customer.id, amount: debtLak } } : {}),
+      });
       device.autoReceiptPrint = printIt;
       if (printIt && !r.printedByServer) printReceipt(r.order, restaurant!, branch!, user!.name);
-      toast.ok(r.change ? `ຊຳລະແລ້ວ · ທອນ ${kip(r.change)}` : 'ຊຳລະແລ້ວ');
+      toast.ok(`ຊຳລະແລ້ວ${r.change ? ` · ທອນ ${kip(r.change)}` : ''}${r.pointsEarned ? ` · ໄດ້ ${r.pointsEarned.toLocaleString('en-US')} ຄະແນນ` : ''}`);
       onPaid(r.order);
     } catch (e) {
       toast.err(e);
@@ -82,9 +99,10 @@ export default function Checkout({ order, onClose, onPaid }: { order: Order; onC
         <div className="space-y-4">
           <div className="rounded-xl bg-slate-900 p-4 text-white">
             <div className="text-sm text-slate-300">ຍອດທີ່ຕ້ອງຊຳລະ</div>
-            <div className="tabular text-3xl font-bold">{kip(order.total)}</div>
+            <div className="tabular text-3xl font-bold">{kip(net)}</div>
+            {pointsValue > 0 && <div className="tabular text-xs text-amber-300">ຍອດບິນ {kip(order.total)} − ຄະແນນ {kip(pointsValue)}</div>}
             <div className="tabular mt-1 text-sm text-slate-300">
-              ≈ ${(order.total / branch!.rate_usd).toFixed(2)} · ฿{(order.total / branch!.rate_thb).toFixed(0)}
+              ≈ ${(net / branch!.rate_usd).toFixed(2)} · ฿{(net / branch!.rate_thb).toFixed(0)}
             </div>
           </div>
           <div className="grid grid-cols-4 gap-2">
@@ -132,12 +150,29 @@ export default function Checkout({ order, onClose, onPaid }: { order: Order; onC
               <input type="checkbox" checked={onCredit} onChange={(e) => { setOnCredit(e.target.checked); setEntry(''); }} className="size-4 accent-brand-600" />
               ຕິດໜີ້ (ຈ່າຍພາຍຫຼັງ)
             </label>
-            {onCredit && (
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" checked={member || onCredit} disabled={onCredit} onChange={(e) => { setMember(e.target.checked); if (!e.target.checked) setRedeem(0); }} className="size-4 accent-brand-600" />
+              ລູກຄ້າສະມາຊິກ{earnPer > 0 || redeemValue > 0 ? ' (ສະສົມ/ແລກຄະແນນ)' : ''}
+            </label>
+            {(member || onCredit) && (
               <>
-                <CustomerPicker value={customer} onPick={setCustomer} />
-                <p className="text-xs text-slate-500">ໃສ່ຍອດທີ່ຈ່າຍຕອນນີ້ (ຖ້າມີ) ແລ້ວກົດ "ແຍກຈ່າຍ"; ສ່ວນທີ່ເຫຼືອຈະຕິດໜີ້ລູກຄ້າ.</p>
+                <CustomerPicker value={customer} onPick={(c) => { setCustomer(c); setRedeem(0); }} />
+                {onCredit && <p className="text-xs text-slate-500">ໃສ່ຍອດທີ່ຈ່າຍຕອນນີ້ (ຖ້າມີ) ແລ້ວກົດ "ແຍກຈ່າຍ"; ສ່ວນທີ່ເຫຼືອຈະຕິດໜີ້ລູກຄ້າ.</p>}
               </>
             )}
+            {useCustomer && redeemValue > 0 && (useCustomer.points ?? 0) > 0 && (
+              <div className="space-y-1.5 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">ແລກຄະແນນ <span className="text-xs font-normal text-slate-500">(ມີ {(useCustomer.points ?? 0).toLocaleString('en-US')} · 1 ຄະແນນ = {kip(redeemValue)})</span></span>
+                  <button className="text-xs font-semibold text-brand-700 underline" onClick={() => setRedeem(maxRedeem)}>ໃຊ້ທັງໝົດ</button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="number" min={0} max={maxRedeem} value={redeemPts || ''} placeholder="0" onChange={(e) => { setRedeem(Math.max(0, Math.min(maxRedeem, Math.floor(Number(e.target.value) || 0)))); setEntry(''); }} className="w-28 rounded-lg border border-slate-300 px-2 py-1.5 text-right" />
+                  <span className="tabular text-xs text-slate-600">{pointsValue > 0 ? `ຫຼຸດ ${kip(pointsValue)}` : `ສູງສຸດ ${maxRedeem.toLocaleString('en-US')} ຄະແນນ`}</span>
+                </div>
+              </div>
+            )}
+            {useCustomer && earnNow > 0 && <p className="text-xs text-emerald-700">ບິນນີ້ຈະໄດ້ ≈ {earnNow.toLocaleString('en-US')} ຄະແນນ</p>}
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={printIt} onChange={(e) => setPrintIt(e.target.checked)} className="size-4 accent-brand-600" />
@@ -176,6 +211,7 @@ export default function Checkout({ order, onClose, onPaid }: { order: Order; onC
           </Button>
           <div className="space-y-1 rounded-lg bg-slate-50 p-3 text-sm">
             <Row label="ຮັບເງິນລວມ" value={kip(totalLak)} />
+            {pointsValue > 0 && <Row label={`ແລກ ${redeemPts} ຄະແນນ`} value={`−${kip(pointsValue)}`} />}
             {debtLak > 0 && <Row label="ຕິດໜີ້" value={kip(debtLak)} strong />}
             <Row label="ເງິນທອນ" value={kip(Math.max(change, 0))} strong />
             {problem && <div className="text-rose-600">{problem}</div>}

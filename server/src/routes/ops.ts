@@ -220,7 +220,7 @@ export function opsRoutes({ db, emit, print }: Ctx) {
     const rows = db.all(
       `SELECT o.id, o.bill_no, o.order_no, o.type, o.status, o.queue_no, t.name AS table_name, o.customer_name, ${when} AS at,
               u.name AS staff, o.subtotal, o.discount, o.promo_name, o.service, o.vat, o.total, o.change_lak, o.debt_amount,
-              c.name AS debt_customer, o.cancel_reason,
+              c.name AS debt_customer, o.cancel_reason, o.points_used, o.points_value, o.points_earned,
               (SELECT COALESCE(SUM(qty),0) FROM order_items oi WHERE oi.order_id = o.id AND oi.status != 'cancelled') AS qty,
               (SELECT COALESCE(SUM(qty * unit_cost),0) FROM order_items oi WHERE oi.order_id = o.id AND oi.status != 'cancelled') AS cost
          ${from_} ORDER BY at DESC, o.id DESC LIMIT ${LIMIT + 1}`,
@@ -241,7 +241,7 @@ export function opsRoutes({ db, emit, print }: Ctx) {
 
     // Totals cover paid bills only (cancelled/open are listed but are not sales).
     const paid = out.filter((x) => x.status === 'paid');
-    const sum = (k: 'subtotal' | 'discount' | 'service' | 'vat' | 'total' | 'cost' | 'profit' | 'debt_amount' | 'change_lak' | 'qty') => paid.reduce((s, x) => s + (x[k] as number), 0);
+    const sum = (k: 'subtotal' | 'discount' | 'service' | 'vat' | 'total' | 'cost' | 'profit' | 'debt_amount' | 'change_lak' | 'qty' | 'points_value' | 'points_earned') => paid.reduce((s, x) => s + (x[k] as number), 0);
     const byMethod: Record<string, number> = {};
     for (const x of paid) for (const [m, v] of Object.entries(x.pay)) byMethod[m] = (byMethod[m] ?? 0) + v;
     // Cash is recorded as handed over; the change given back is not takings, so report cash net of change.
@@ -253,7 +253,7 @@ export function opsRoutes({ db, emit, print }: Ctx) {
       totals: {
         count: out.length, paidCount: paid.length, cancelledCount: out.filter((x) => x.status === 'cancelled').length, openCount: out.filter((x) => x.status === 'open').length,
         qty: sum('qty'), subtotal: sum('subtotal'), discount: sum('discount'), service: sum('service'), vat: sum('vat'), total: sum('total'),
-        cost: sum('cost'), profit: sum('profit'), debt: sum('debt_amount'), change: sum('change_lak'), avg: paid.length ? Math.round(sum('total') / paid.length) : 0,
+        cost: sum('cost'), profit: sum('profit'), debt: sum('debt_amount'), pointsValue: sum('points_value'), pointsEarned: sum('points_earned'), change: sum('change_lak'), avg: paid.length ? Math.round(sum('total') / paid.length) : 0,
         cancelledTotal: out.filter((x) => x.status === 'cancelled').reduce((s, x) => s + x.total, 0),
         byMethod,
       },
@@ -335,7 +335,7 @@ export function opsRoutes({ db, emit, print }: Ctx) {
       }
       db.run(
         `UPDATE branches SET name=?, address=?, phone=?, vat_rate=?, service_rate=?, rate_usd=?, rate_thb=?, receipt_header=?, receipt_footer=?, bank_info=?,
-           qr_enabled=?, qr_auto_confirm=?, public_url=?, auto_kitchen_print=? WHERE id=?`,
+           qr_enabled=?, qr_auto_confirm=?, public_url=?, auto_kitchen_print=?, loyalty_earn_per=?, loyalty_redeem_value=? WHERE id=?`,
         pick('name', b.name, (x) => str(x, 'ຊື່ສາຂາ', { required: true, max: 120 })),
         pick('address', b.address, (x) => str(x, 'ທີ່ຢູ່', { max: 300 })),
         pick('phone', b.phone, (x) => str(x, 'ເບີໂທ', { max: 60 })),
@@ -354,6 +354,8 @@ export function opsRoutes({ db, emit, print }: Ctx) {
           return u;
         }),
         pick('auto_kitchen_print', b.auto_kitchen_print, (x) => (x ? 1 : 0)),
+        pick('loyalty_earn_per', b.loyalty_earn_per, (x) => Math.round(num(x, 'ເກນຄະແນນ', { min: 0, max: 1e9 }))),
+        pick('loyalty_redeem_value', b.loyalty_redeem_value, (x) => Math.round(num(x, 'ມູນຄ່າຄະແນນ', { min: 0, max: 1e9 }))),
         b.id,
       );
       db.audit(req.user.bid, req.user.uid, 'update', 'settings', b.id, v);
