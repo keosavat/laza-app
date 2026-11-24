@@ -182,6 +182,85 @@ export function opsRoutes({ db, emit, print }: Ctx) {
     });
   });
 
+  /** Detailed transactions: one row per bill over a date range, with filters, per-method amounts, cost/profit and totals. */
+  r.get('/reports/transactions', requirePerm('reports'), (req, res) => {
+    const bid = req.user.bid;
+    const off = getBranch(db, bid).utc_offset_min;
+    const today = localDate(new Date(), off);
+    const from = req.query.from ? String(req.query.from) : today;
+    const to = req.query.to ? String(req.query.to) : from;
+    const start = dayRange(from, off).start;
+    const end = dayRange(to, off).end;
+    if (end <= start) throw bad('ຊ່ວງວັນທີບໍ່ຖືກຕ້ອງ');
+    if (Date.parse(end) - Date.parse(start) > 366 * 86_400_000) throw bad('ເລືອກຊ່ວງວັນທີບໍ່ເກີນ 1 ປີ');
+    const status = oneOf(req.query.status ? String(req.query.status) : 'paid', 'ສະຖານະ', ['paid', 'cancelled', 'open', 'all'] as const);
+    const type = req.query.type ? oneOf(String(req.query.type), 'ປະເພດ', ['dine_in', 'takeaway'] as const) : '';
+    const method = req.query.method ? oneOf(String(req.query.method), 'ວິທີຊຳລະ', ['cash', 'transfer', 'qr', 'card'] as const) : '';
+    const has = req.query.has ? oneOf(String(req.query.has), 'ຕົວກອງ', ['debt', 'discount'] as const) : '';
+    const staff = req.query.staff ? int(req.query.staff, 'ພະນັກງານ') : 0;
+    const q = req.query.q ? String(req.query.q).trim().toLowerCase() : '';
+    const LIMIT = 1000;
+
+    const when = "(CASE o.status WHEN 'paid' THEN o.paid_at WHEN 'cancelled' THEN o.cancelled_at ELSE o.created_at END)";
+    const where = ['o.branch_id = ?', `${when} >= ?`, `${when} < ?`];
+    const args: any[] = [bid, start, end];
+    if (status !== 'all') { where.push('o.status = ?'); args.push(status); }
+    if (type) { where.push('o.type = ?'); args.push(type); }
+    if (staff) { where.push('o.paid_by = ?'); args.push(staff); }
+    if (method) { where.push('EXISTS (SELECT 1 FROM payments p WHERE p.order_id = o.id AND p.method = ?)'); args.push(method); }
+    if (has === 'debt') where.push('o.debt_amount > 0');
+    if (has === 'discount') where.push('o.discount > 0');
+    if (q) {
+      where.push("(LOWER(o.bill_no) LIKE ? OR LOWER(o.order_no) LIKE ? OR LOWER(o.customer_name) LIKE ? OR LOWER(t.name) LIKE ? OR LOWER(COALESCE(c.name,'')) LIKE ?)");
+      const like = `%${q.replace(/[%_]/g, '')}%`;
+      args.push(like, like, like, like, like);
+    }
+    const from_ = `FROM orders o LEFT JOIN tables t ON t.id = o.table_id LEFT JOIN users u ON u.id = o.paid_by LEFT JOIN customers c ON c.id = o.debt_customer_id WHERE ${where.join(' AND ')}`;
+
+    const rows = db.all(
+      `SELECT o.id, o.bill_no, o.order_no, o.type, o.status, o.queue_no, t.name AS table_name, o.customer_name, ${when} AS at,
+              u.name AS staff, o.subtotal, o.discount, o.promo_name, o.service, o.vat, o.total, o.change_lak, o.debt_amount,
+              c.name AS debt_customer, o.cancel_reason,
+              (SELECT COALESCE(SUM(qty),0) FROM order_items oi WHERE oi.order_id = o.id AND oi.status != 'cancelled') AS qty,
+              (SELECT COALESCE(SUM(qty * unit_cost),0) FROM order_items oi WHERE oi.order_id = o.id AND oi.status != 'cancelled') AS cost
+         ${from_} ORDER BY at DESC, o.id DESC LIMIT ${LIMIT + 1}`,
+      ...args,
+    );
+    const truncated = rows.length > LIMIT;
+    if (truncated) rows.pop();
+
+    const pays = new Map<number, Record<string, number>>();
+    if (rows.length) {
+      for (const p of db.all(`SELECT order_id, method, SUM(amount_lak) AS v FROM payments WHERE order_id IN (${rows.map(() => '?').join(',')}) GROUP BY order_id, method`, ...rows.map((x) => x.id))) {
+        const m = pays.get(p.order_id) ?? {};
+        m[p.method] = p.v;
+        pays.set(p.order_id, m);
+      }
+    }
+    const out = rows.map((x) => ({ ...x, pay: pays.get(x.id) ?? {}, profit: x.status === 'paid' ? x.subtotal - x.discount - x.cost : 0 }));
+
+    // Totals cover paid bills only (cancelled/open are listed but are not sales).
+    const paid = out.filter((x) => x.status === 'paid');
+    const sum = (k: 'subtotal' | 'discount' | 'service' | 'vat' | 'total' | 'cost' | 'profit' | 'debt_amount' | 'change_lak' | 'qty') => paid.reduce((s, x) => s + (x[k] as number), 0);
+    const byMethod: Record<string, number> = {};
+    for (const x of paid) for (const [m, v] of Object.entries(x.pay)) byMethod[m] = (byMethod[m] ?? 0) + v;
+    // Cash is recorded as handed over; the change given back is not takings, so report cash net of change.
+    if (byMethod.cash) byMethod.cash -= sum('change_lak');
+    const staffOptions = db.all('SELECT id, name FROM users WHERE branch_id = ? ORDER BY name', bid);
+    res.json({
+      from, to, truncated, limit: LIMIT,
+      rows: out,
+      totals: {
+        count: out.length, paidCount: paid.length, cancelledCount: out.filter((x) => x.status === 'cancelled').length, openCount: out.filter((x) => x.status === 'open').length,
+        qty: sum('qty'), subtotal: sum('subtotal'), discount: sum('discount'), service: sum('service'), vat: sum('vat'), total: sum('total'),
+        cost: sum('cost'), profit: sum('profit'), debt: sum('debt_amount'), change: sum('change_lak'), avg: paid.length ? Math.round(sum('total') / paid.length) : 0,
+        cancelledTotal: out.filter((x) => x.status === 'cancelled').reduce((s, x) => s + x.total, 0),
+        byMethod,
+      },
+      staff: staffOptions,
+    });
+  });
+
   // ----- Staff -----
   const userOut = (u: any) => ({ id: u.id, name: u.name, username: u.username, role: u.role, active: u.active, created_at: u.created_at });
   r.get('/users', requirePerm('admin'), (req, res) => {

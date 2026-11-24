@@ -15,6 +15,7 @@ import OrderScreen from './pages/OrderScreen';
 import Takeaway from './pages/Takeaway';
 import Kitchen from './pages/Kitchen';
 import Orders from './pages/Orders';
+import Transactions from './pages/Transactions';
 import ShiftPage from './pages/Shift';
 import MenuAdmin from './pages/MenuAdmin';
 import FloorAdmin from './pages/FloorAdmin';
@@ -57,6 +58,7 @@ function App() {
         <Route path="takeaway" element={<Guard perm="pos"><Takeaway /></Guard>} />
         <Route path="kitchen" element={<Guard perm="kitchen"><Kitchen /></Guard>} />
         <Route path="orders" element={<Guard perm="reports"><Orders /></Guard>} />
+        <Route path="transactions" element={<Guard perm="reports"><Transactions /></Guard>} />
         <Route path="shift" element={<Guard perm="shift"><ShiftPage /></Guard>} />
         <Route path="menu" element={<Guard perm="admin"><MenuAdmin /></Guard>} />
         <Route path="floor" element={<Guard perm="admin"><FloorAdmin /></Guard>} />
