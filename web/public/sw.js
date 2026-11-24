@@ -86,7 +86,7 @@ self.addEventListener('fetch', (e) => {
 
   if (url.pathname.startsWith('/api/')) return e.respondWith(apiGet(req));
   if (req.mode === 'navigate') return e.respondWith(navigate(req));
-  if (url.pathname.startsWith('/assets/') || /\.(svg|png|ico|webmanifest|woff2?)$/.test(url.pathname)) return e.respondWith(staticAsset(req));
+  if (url.pathname.startsWith('/assets/') || /\.(svg|png|ico|webmanifest|woff2?|mp3)$/.test(url.pathname)) return e.respondWith(staticAsset(req));
 });
 
 self.addEventListener('message', (e) => {

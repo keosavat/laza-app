@@ -4,7 +4,7 @@ import { Bell, HandPlatter, Receipt } from 'lucide-react';
 import { get, post } from '../lib/api';
 import { useSession, useSync } from '../lib/store';
 import { can, since } from '../lib/format';
-import { beep } from '../lib/sound';
+import { orderBell } from '../lib/sound';
 import { Button, toast, useLoad } from './ui';
 
 interface Alerts {
@@ -31,7 +31,7 @@ export default function QrAlerts() {
   useEffect(() => {
     if (!data) return;
     const keys = new Set([...a.calls.map((c) => `c${c.id}`), ...a.awaiting.map((w) => `a${w.order_id}:${w.n}`)]);
-    if (seen.current && [...keys].some((k) => !seen.current!.has(k))) beep(988, 300);
+    if (seen.current && [...keys].some((k) => !seen.current!.has(k))) orderBell();
     seen.current = keys;
   }, [data, a.calls, a.awaiting]);
 

@@ -15,3 +15,16 @@ export function beep(freq = 880, ms = 250) {
     /* audio not available */
   }
 }
+
+let bellAudio: HTMLAudioElement | null = null;
+
+/** Desk-bell sound for new orders (web/public/sounds/order-bell.mp3, made with earshot). Falls back to beep(). */
+export function orderBell() {
+  try {
+    bellAudio ??= new Audio('/sounds/order-bell.mp3');
+    bellAudio.currentTime = 0;
+    bellAudio.play().catch(() => beep(988, 300));
+  } catch {
+    beep(988, 300);
+  }
+}

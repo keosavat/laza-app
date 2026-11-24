@@ -3,7 +3,7 @@ import { Volume2, VolumeX } from 'lucide-react';
 import { get, post, wasQueued, type ItemStatus, type KitchenItem } from '../lib/api';
 import { useSync } from '../lib/store';
 import { since, STATUS_LABEL, time } from '../lib/format';
-import { beep } from '../lib/sound';
+import { orderBell } from '../lib/sound';
 import { Button, Empty, PageHeader, Spinner, cx, toast, useLoad } from '../components/ui';
 
 const NEXT: Partial<Record<ItemStatus, ItemStatus>> = { pending: 'preparing', preparing: 'ready', ready: 'served' };
@@ -27,7 +27,7 @@ export default function Kitchen() {
   useEffect(() => {
     if (!items) return;
     const ids = new Set(items.map((i) => i.id));
-    if (lastIds.current && sound && items.some((i) => !lastIds.current!.has(i.id))) beep();
+    if (lastIds.current && sound && items.some((i) => !lastIds.current!.has(i.id))) orderBell();
     lastIds.current = ids;
   }, [items, sound]);
 
