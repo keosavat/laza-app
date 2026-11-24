@@ -14,6 +14,8 @@ interface Session {
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   refresh: () => Promise<void>;
+  /** Owner only: work in another branch (new token, everything reloaded). */
+  switchBranch: (branchId: number) => Promise<void>;
 }
 
 let socket: Socket | null = null;
@@ -48,6 +50,14 @@ export const useSession = create<Session>((set, getState) => ({
     socket?.disconnect();
     socket = null;
     set({ user: null, branch: null, restaurant: null, shift: null, ready: true });
+  },
+  async switchBranch(branchId) {
+    const r = await post<{ token: string; user: User }>(`/branches/${branchId}/switch`, {});
+    // Cached answers belong to the previous branch.
+    try { navigator.serviceWorker?.controller?.postMessage('clear-api'); } catch { /* ignore */ }
+    tokenStore.set(r.token);
+    connectSocket(r.token);
+    window.location.assign('/');
   },
   async refresh() {
     const token = tokenStore.get();

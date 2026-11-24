@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import {
-  LayoutDashboard, Armchair, ShoppingBag, ChefHat, Receipt, Wallet, UtensilsCrossed, LayoutGrid, Users, Settings, LogOut, Menu as MenuIcon, X, Printer, AlertTriangle, Boxes, ScrollText, Tag, HandCoins, FileBarChart, Contact, CalendarClock, Truck, Beer,
+  LayoutDashboard, Armchair, ShoppingBag, ChefHat, Receipt, Wallet, UtensilsCrossed, LayoutGrid, Users, Settings, LogOut, Menu as MenuIcon, X, Printer, AlertTriangle, Boxes, ScrollText, Tag, HandCoins, FileBarChart, Contact, CalendarClock, Truck, Beer, Store,
 } from 'lucide-react';
 import { useSession } from '../lib/store';
 import { can, ROLE_LABEL, type Perm } from '../lib/format';
@@ -28,6 +28,7 @@ const NAV: { to: string; label: string; icon: typeof LayoutDashboard; perm: Perm
   { to: '/floor', label: 'ຈັດການໂຕະ', icon: LayoutGrid, perm: 'admin' },
   { to: '/staff', label: 'ພະນັກງານ', icon: Users, perm: 'admin' },
   { to: '/inventory', label: 'ສະຕັອກ', icon: Boxes, perm: 'admin' },
+  { to: '/branches', label: 'ຫຼາຍສາຂາ', icon: Store, perm: 'owner' },
   { to: '/purchasing', label: 'ຈັດຊື້ / ຜູ້ສະໜອງ', icon: Truck, perm: 'admin' },
   { to: '/printers', label: 'ເຄື່ອງພິມ', icon: Printer, perm: 'admin' },
   { to: '/promotions', label: 'ໂປຣໂມຊັນ', icon: Tag, perm: 'admin' },
@@ -47,7 +48,11 @@ export default function Layout() {
         <img src="/laza.svg" alt="" className="size-10" />
         <div className="min-w-0">
           <div className="truncate font-bold text-white">{restaurant?.name ?? 'LAZA app'}</div>
-          <div className="truncate text-xs text-slate-400">{branch?.name}</div>
+          {user?.role === 'owner' ? (
+            <button onClick={() => nav('/branches')} title="ປ່ຽນ/ຈັດການສາຂາ" className="block max-w-full truncate text-left text-xs text-slate-400 hover:text-white">{branch?.name} ▾</button>
+          ) : (
+            <div className="truncate text-xs text-slate-400">{branch?.name}</div>
+          )}
         </div>
       </div>
       <div className="flex-1 space-y-0.5 overflow-y-auto px-2">

@@ -30,6 +30,7 @@ export const PERMS = {
   shift: ['owner', 'manager', 'cashier'],
   reports: ['owner', 'manager', 'cashier'],
   admin: ['owner', 'manager'],
+  owner: ['owner'],
 } as const satisfies Record<string, readonly Role[]>;
 export type Perm = keyof typeof PERMS;
 

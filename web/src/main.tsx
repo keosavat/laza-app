@@ -19,6 +19,7 @@ import Transactions from './pages/Transactions';
 import Customers from './pages/Customers';
 import Reservations from './pages/Reservations';
 import Deposits from './pages/Deposits';
+import Branches from './pages/Branches';
 import ShiftPage from './pages/Shift';
 import MenuAdmin from './pages/MenuAdmin';
 import FloorAdmin from './pages/FloorAdmin';
@@ -64,6 +65,7 @@ function App() {
         <Route path="orders" element={<Guard perm="reports"><Orders /></Guard>} />
         <Route path="transactions" element={<Guard perm="reports"><Transactions /></Guard>} />
         <Route path="customers" element={<Guard perm="pay"><Customers /></Guard>} />
+        <Route path="branches" element={<Guard perm="owner"><Branches /></Guard>} />
         <Route path="deposits" element={<Guard perm="pos"><Deposits /></Guard>} />
         <Route path="reservations" element={<Guard perm="pos"><Reservations /></Guard>} />
         <Route path="shift" element={<Guard perm="shift"><ShiftPage /></Guard>} />

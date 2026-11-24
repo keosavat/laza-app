@@ -64,6 +64,7 @@ const PERMS = {
   shift: ['owner', 'manager', 'cashier'],
   reports: ['owner', 'manager', 'cashier'],
   admin: ['owner', 'manager'],
+  owner: ['owner'],
 } as const;
 export type Perm = keyof typeof PERMS;
 export const can = (role: Role | undefined, p: Perm) => !!role && (PERMS[p] as readonly string[]).includes(role);
