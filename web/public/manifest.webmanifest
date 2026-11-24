@@ -7,5 +7,6 @@
   "background_color": "#f1f5f9",
   "theme_color": "#0d9488",
   "lang": "lo",
+  "shortcuts": [{ "name": "ແອັບເຈົ້າຂອງ", "short_name": "ເຈົ້າຂອງ", "url": "/owner" }],
   "icons": [{ "src": "/laza.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
 }

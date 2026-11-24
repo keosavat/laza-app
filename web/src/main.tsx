@@ -20,6 +20,7 @@ import Customers from './pages/Customers';
 import Reservations from './pages/Reservations';
 import Deposits from './pages/Deposits';
 import Branches from './pages/Branches';
+import Owner from './pages/Owner';
 import ShiftPage from './pages/Shift';
 import MenuAdmin from './pages/MenuAdmin';
 import FloorAdmin from './pages/FloorAdmin';
@@ -41,6 +42,8 @@ function Home() {
   const role = useSession((s) => s.user?.role);
   if (role === 'kitchen') return <Navigate to="/kitchen" replace />;
   if (role === 'waiter') return <Navigate to="/tables" replace />;
+  // The owner on a phone gets the owner overview first (the desktop dashboard is for the counter).
+  if (role === 'owner' && window.innerWidth < 768) return <Navigate to="/owner" replace />;
   return <Dashboard />;
 }
 
@@ -65,6 +68,7 @@ function App() {
         <Route path="orders" element={<Guard perm="reports"><Orders /></Guard>} />
         <Route path="transactions" element={<Guard perm="reports"><Transactions /></Guard>} />
         <Route path="customers" element={<Guard perm="pay"><Customers /></Guard>} />
+        <Route path="owner" element={<Guard perm="owner"><Owner /></Guard>} />
         <Route path="branches" element={<Guard perm="owner"><Branches /></Guard>} />
         <Route path="deposits" element={<Guard perm="pos"><Deposits /></Guard>} />
         <Route path="reservations" element={<Guard perm="pos"><Reservations /></Guard>} />

@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import {
-  LayoutDashboard, Armchair, ShoppingBag, ChefHat, Receipt, Wallet, UtensilsCrossed, LayoutGrid, Users, Settings, LogOut, Menu as MenuIcon, X, Printer, AlertTriangle, Boxes, ScrollText, Tag, HandCoins, FileBarChart, Contact, CalendarClock, Truck, Beer, Store,
+  LayoutDashboard, Armchair, ShoppingBag, ChefHat, Receipt, Wallet, UtensilsCrossed, LayoutGrid, Users, Settings, LogOut, Menu as MenuIcon, X, Printer, AlertTriangle, Boxes, ScrollText, Tag, HandCoins, FileBarChart, Contact, CalendarClock, Truck, Beer, Store, Smartphone,
 } from 'lucide-react';
 import { useSession } from '../lib/store';
 import { can, ROLE_LABEL, type Perm } from '../lib/format';
@@ -13,6 +13,7 @@ import { useSync } from '../lib/store';
 import { useLoad } from './ui';
 
 const NAV: { to: string; label: string; icon: typeof LayoutDashboard; perm: Perm; group?: string }[] = [
+  { to: '/owner', label: 'ແອັບເຈົ້າຂອງ', icon: Smartphone, perm: 'owner' },
   { to: '/', label: 'ພາບລວມ', icon: LayoutDashboard, perm: 'reports' },
   { to: '/tables', label: 'ໂຕະ', icon: Armchair, perm: 'pos' },
   { to: '/reservations', label: 'ຈອງໂຕະ', icon: CalendarClock, perm: 'pos' },
