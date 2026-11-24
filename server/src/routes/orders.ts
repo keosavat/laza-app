@@ -3,6 +3,7 @@ import type { Ctx } from '../app.ts';
 import { can, requirePerm } from '../auth.ts';
 import { now } from '../db.ts';
 import { bad, conflict, dayRange, forbidden, int, notFound, num, oneOf, str } from '../lib/core.ts';
+import { localNow } from './reservations.ts';
 import { addItems, createOrder, getBranch, issueQr, loadOrder, orderDetail, payOrder, recalc, requireOpen, type NewItem, type PaymentInput } from '../lib/orders.ts';
 
 const ITEM_FLOW = ['pending', 'preparing', 'ready', 'served'] as const;
@@ -28,6 +29,21 @@ export function orderRoutes({ db, emit, print }: Ctx) {
         WHERE t.branch_id = ? AND t.active = 1 ORDER BY t.sort, t.id`,
       bid,
     );
+    // Next waiting reservation per table today (not yet over), shown as a badge on the floor plan.
+    const n = localNow(getBranch(db, bid).utc_offset_min);
+    const nowMin = Number(n.time.slice(0, 2)) * 60 + Number(n.time.slice(3, 5));
+    const next = new Map<number, any>();
+    for (const x of db.all("SELECT id, table_id, name, party_size, reserved_time, duration_min FROM reservations WHERE branch_id = ? AND reserved_date = ? AND status = 'booked' AND table_id IS NOT NULL ORDER BY reserved_time", bid, n.date)) {
+      const end = Number(x.reserved_time.slice(0, 2)) * 60 + Number(x.reserved_time.slice(3, 5)) + x.duration_min;
+      if (end > nowMin && !next.has(x.table_id)) next.set(x.table_id, x);
+    }
+    for (const t of tables) {
+      const x = next.get(t.id);
+      t.resv_id = x?.id ?? null;
+      t.resv_time = x?.reserved_time ?? null;
+      t.resv_name = x?.name ?? null;
+      t.resv_party = x?.party_size ?? null;
+    }
     res.json({ zones, tables });
   });
 

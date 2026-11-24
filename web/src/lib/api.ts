@@ -25,6 +25,12 @@ export interface FloorTable extends Table {
   order_id: number | null; order_total: number | null; opened_at: string | null;
   bill_printed_at: string | null; item_count: number; in_kitchen: number;
   awaiting_count: number; calls_open: number; has_qr: number;
+  resv_id: number | null; resv_time: string | null; resv_name: string | null; resv_party: number | null;
+}
+export type ResvStatus = 'booked' | 'seated' | 'cancelled' | 'no_show';
+export interface Reservation {
+  id: number; customer_id: number | null; name: string; phone: string; party_size: number; table_id: number | null; table_name: string | null;
+  reserved_date: string; reserved_time: string; duration_min: number; note: string; status: ResvStatus; order_id: number | null;
 }
 export type ItemStatus = 'pending' | 'preparing' | 'ready' | 'served' | 'cancelled';
 export interface ChosenOption { group: string; name: string; price: number }

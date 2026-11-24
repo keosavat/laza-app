@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Clock, Printer, ChefHat, QrCode, Hand, Bell, Minus, Plus } from 'lucide-react';
+import { Users, Clock, Printer, ChefHat, QrCode, Hand, Bell, Minus, Plus, CalendarClock } from 'lucide-react';
 import { get, post, type FloorTable, type Order, type Zone } from '../lib/api';
 import { useSession, useSync } from '../lib/store';
 import { kip, since } from '../lib/format';
@@ -131,6 +131,12 @@ export default function Tables() {
                   </div>
                 ) : (
                   <span className="text-sm text-emerald-600">ວ່າງ</span>
+                )}
+                {t.resv_id && (
+                  <span className={cx('mt-1 flex items-center gap-1 truncate rounded-full px-2 py-0.5 text-[11px] font-semibold', busy ? 'bg-white text-amber-700' : 'bg-amber-100 text-amber-800')}>
+                    <CalendarClock className="size-3 shrink-0" />
+                    <span className="truncate">ຈອງ {t.resv_time} · {t.resv_name}</span>
+                  </span>
                 )}
               </button>
             );

@@ -334,6 +334,29 @@ function migrate(raw: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_point_entries_cust ON point_entries(customer_id, id);
     CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
   `);
+  // Table reservations. Date and time are the branch's local wall-clock values (no timezone maths).
+  raw.exec(`
+    CREATE TABLE IF NOT EXISTS reservations (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      customer_id INTEGER REFERENCES customers(id),
+      name TEXT NOT NULL,
+      phone TEXT NOT NULL DEFAULT '',
+      party_size INTEGER NOT NULL DEFAULT 2,
+      table_id INTEGER REFERENCES tables(id),
+      reserved_date TEXT NOT NULL,
+      reserved_time TEXT NOT NULL,
+      duration_min INTEGER NOT NULL DEFAULT 90,
+      note TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'booked' CHECK (status IN ('booked','seated','cancelled','no_show')),
+      order_id INTEGER REFERENCES orders(id),
+      user_id INTEGER REFERENCES users(id),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_resv_day ON reservations(branch_id, reserved_date, reserved_time);
+    CREATE INDEX IF NOT EXISTS idx_resv_table ON reservations(table_id, reserved_date);
+  `);
   // Printing: category → kitchen printer routing, auto-print switch.
   addColumn(raw, 'categories', 'printer_id', 'INTEGER');
   addColumn(raw, 'branches', 'auto_kitchen_print', 'INTEGER NOT NULL DEFAULT 1');

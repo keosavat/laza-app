@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, HandPlatter, Receipt } from 'lucide-react';
 import { get, post } from '../lib/api';
@@ -10,8 +10,10 @@ import { Button, toast, useLoad } from './ui';
 interface Alerts {
   calls: { id: number; type: 'waiter' | 'bill'; created_at: string; order_id: number; table_name: string }[];
   awaiting: { order_id: number; table_name: string; n: number; since: string }[];
+  /** Customer items already sent to the kitchen (auto-confirm), for the last few minutes. */
+  fresh: { order_id: number; table_name: string; n: number; since: string }[];
 }
-const EMPTY: Alerts = { calls: [], awaiting: [] };
+const EMPTY: Alerts = { calls: [], awaiting: [], fresh: [] };
 
 /** Floating list of things customers are waiting on: items to approve, "call waiter", "bill please". */
 export default function QrAlerts() {
@@ -20,22 +22,26 @@ export default function QrAlerts() {
   const [data, reload] = useLoad(() => (allowed ? get<Alerts>('/qr/alerts') : Promise.resolve(EMPTY)), [allowed]);
   useSync(['qr', 'orders'], reload);
   const seen = useRef<Set<string> | null>(null);
-  const a = data ?? EMPTY;
+  const a = { ...EMPTY, ...data };
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const freshKey = (w: Alerts['fresh'][number]) => `f${w.order_id}:${w.n}`;
+  const fresh = a.fresh.filter((w) => !dismissed.has(freshKey(w)));
 
-  // Re-check now and then so "x minutes ago" and missed events stay correct.
+  // Re-check now and then so "x minutes ago", missed events and expiring notices stay correct.
   useEffect(() => {
-    const t = setInterval(reload, 30_000);
+    const t = setInterval(reload, 20_000);
     return () => clearInterval(t);
   }, [reload]);
 
   useEffect(() => {
     if (!data) return;
-    const keys = new Set([...a.calls.map((c) => `c${c.id}`), ...a.awaiting.map((w) => `a${w.order_id}:${w.n}`)]);
+    const keys = new Set([...a.calls.map((c) => `c${c.id}`), ...a.awaiting.map((w) => `a${w.order_id}:${w.n}`), ...a.fresh.map(freshKey)]);
     if (seen.current && [...keys].some((k) => !seen.current!.has(k))) orderBell();
     seen.current = keys;
-  }, [data, a.calls, a.awaiting]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
-  if (!a.calls.length && !a.awaiting.length) return null;
+  if (!a.calls.length && !a.awaiting.length && !fresh.length) return null;
 
   const handle = async (id: number) => {
     try {
@@ -59,6 +65,19 @@ export default function QrAlerts() {
           <div className="mt-2 grid grid-cols-2 gap-2">
             <Button size="sm" variant="secondary" onClick={() => nav(`/order/${c.order_id}`)}>ເບິ່ງໂຕະ</Button>
             <Button size="sm" onClick={() => handle(c.id)}>ຮັບຊາບແລ້ວ</Button>
+          </div>
+        </div>
+      ))}
+      {fresh.map((w) => (
+        <div key={w.order_id} className="pointer-events-auto rounded-xl border-2 border-brand-500 bg-brand-50 p-3 shadow-lg">
+          <div className="flex items-center gap-2 font-semibold text-brand-800">
+            <HandPlatter className="size-4" />
+            ໂຕະ {w.table_name}: ລູກຄ້າສັ່ງ {w.n} ລາຍການ
+            <span className="ml-auto text-xs font-normal text-brand-700">{since(w.since)}</span>
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Button size="sm" variant="secondary" onClick={() => nav(`/order/${w.order_id}`)}>ເບິ່ງໂຕະ</Button>
+            <Button size="sm" onClick={() => setDismissed((d) => new Set(d).add(freshKey(w)))}>ຮັບຊາບແລ້ວ</Button>
           </div>
         </div>
       ))}

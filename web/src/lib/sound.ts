@@ -18,6 +18,23 @@ export function beep(freq = 880, ms = 250) {
 
 let bellAudio: HTMLAudioElement | null = null;
 
+/** Browsers refuse to play sound until the page has had a click/tap/key. Prime the bell on the first one so later alerts are audible. */
+if (typeof window !== 'undefined') {
+  const unlock = () => {
+    try {
+      bellAudio ??= new Audio('/sounds/order-bell.mp3');
+      bellAudio.muted = true;
+      void bellAudio.play().then(() => {
+        bellAudio!.pause();
+        bellAudio!.currentTime = 0;
+        bellAudio!.muted = false;
+      }).catch(() => { if (bellAudio) bellAudio.muted = false; });
+    } catch { /* ignore */ }
+    for (const ev of ['pointerdown', 'keydown']) window.removeEventListener(ev, unlock);
+  };
+  for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, unlock);
+}
+
 /** Desk-bell sound for new orders (web/public/sounds/order-bell.mp3, made with earshot). Falls back to beep(). */
 export function orderBell() {
   try {
