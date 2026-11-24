@@ -21,6 +21,7 @@ export default function Inventory() {
   const [edit, setEdit] = useState<Partial<Ingredient> | null>(null);
   const [stockFor, setStockFor] = useState<{ ing: Ingredient; type: 'in' | 'adjust' | 'waste' } | null>(null);
   const [onlyLow, setOnlyLow] = useState(false);
+  const [showOff, setShowOff] = useState(false);
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [sum] = useLoad(() => get<{ missingRecipe: { id: number; name: string }[]; menuTotal: number }>('/inventory/summary'));
@@ -44,7 +45,8 @@ export default function Inventory() {
 
   if (loading || !items) return <Spinner />;
   const cats = [...new Set(items.map((i) => i.category).filter(Boolean))].sort();
-  const shown = items.filter((i) => (!onlyLow || i.low) && (!cat || i.category === cat) && (!q.trim() || i.name.toLowerCase().includes(q.trim().toLowerCase())));
+  const inactiveCount = items.filter((i) => !i.active).length;
+  const shown = items.filter((i) => (showOff || i.active) && (!onlyLow || i.low) && (!cat || i.category === cat) && (!q.trim() || i.name.toLowerCase().includes(q.trim().toLowerCase())));
   const today = new Date().toISOString().slice(0, 10);
   const soon = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
   const toBuy = items.filter((i) => i.suggest > 0);
@@ -122,6 +124,11 @@ export default function Inventory() {
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" className="size-4 accent-brand-600" checked={onlyLow} onChange={(e) => setOnlyLow(e.target.checked)} /> ສະເພາະໃກ້ໝົດ
             </label>
+            {inactiveCount > 0 && (
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" className="size-4 accent-brand-600" checked={showOff} onChange={(e) => setShowOff(e.target.checked)} /> ສະແດງທີ່ປິດໃຊ້ ({inactiveCount})
+              </label>
+            )}
           </>
         )}
       </div>
