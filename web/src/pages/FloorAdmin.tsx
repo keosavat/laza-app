@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { del, get, post, put, type Table, type Zone } from '../lib/api';
 import { useSync } from '../lib/store';
-import { Button, Card, Empty, Field, Input, Modal, PageHeader, Select, Spinner, toast, useAction, useLoad , ask } from '../components/ui';
+import { Button, Card, Empty, Field, Input, Modal, MoneyInput, PageHeader, Select, Spinner, cx, toast, useAction, useLoad , ask } from '../components/ui';
 
 export default function FloorAdmin() {
   const [data, reload, loading] = useLoad(async () => {
@@ -59,7 +59,7 @@ export default function FloorAdmin() {
                     <div key={t.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
                       <div>
                         <div className="font-semibold">{t.name}</div>
-                        <div className="text-xs text-slate-400">{t.seats} ບ່ອນນັ່ງ</div>
+                        <div className="text-xs text-slate-400">{t.seats} ບ່ອນນັ່ງ{t.rate_per_hour > 0 && <span className="ml-1 font-medium text-brand-700">· ₭{t.rate_per_hour.toLocaleString('en-US')}/ຊມ</span>}</div>
                       </div>
                       <div className="flex">
                         <button onClick={() => setEditTable(t)} className="rounded p-1 text-slate-500 hover:bg-slate-100" aria-label="ແກ້ໄຂ">
@@ -96,9 +96,12 @@ function TableModal({ table, zones, onClose, onSaved }: { table: Partial<Table>;
   const [seats, setSeats] = useState(table.seats ?? 4);
   const [zoneId, setZoneId] = useState<number | null>(table.zone_id ?? null);
   const [sort, setSort] = useState(table.sort ?? 0);
+  const [rate, setRate] = useState(table.rate_per_hour ?? 0);
+  const [step, setStep] = useState(table.time_step ?? 15);
+  const [minMin, setMinMin] = useState(table.time_min ?? 0);
   const { busy, run } = useAction();
   const save = async () => {
-    const body = { name, seats, zoneId, sort };
+    const body = { name, seats, zoneId, sort, ratePerHour: rate, timeStep: step, timeMin: minMin };
     if (await run(() => (table.id ? put(`/tables/${table.id}`, body) : post('/tables', body)), 'ບັນທຶກແລ້ວ')) {
       onSaved();
       onClose();
@@ -126,6 +129,24 @@ function TableModal({ table, zones, onClose, onSaved }: { table: Partial<Table>;
             ))}
           </Select>
         </Field>
+        <div className={cx('space-y-3 rounded-xl border p-3', rate > 0 ? 'border-brand-300 bg-brand-50' : 'border-slate-200')}>
+          <Field label="ຄິດເງິນຕາມເວລາ: ລາຄາ/ຊົ່ວໂມງ (₭)" hint="ໃສ່ 0 ຖ້າເປັນໂຕະທຳມະດາ. ໂຕະບິລລຽດ, ຄາລາໂອເກະ, ປິງປ໋ອງ... ໃສ່ລາຄາຕໍ່ຊົ່ວໂມງ ແລ້ວນາຬິກາຈະເລີ່ມນັບເມື່ອເປີດໂຕະ">
+            <MoneyInput value={rate} onChange={setRate} />
+          </Field>
+          {rate > 0 && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="ຄິດເປັນຊ່ວງ (ປັດຂຶ້ນ)">
+                <Select value={step} onChange={(e) => setStep(Number(e.target.value))}>
+                  {[1, 5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} ນາທີ</option>)}
+                </Select>
+              </Field>
+              <Field label="ເວລາຂັ້ນຕ່ຳ (ນາທີ)">
+                <Input type="number" min={0} max={600} value={minMin || ''} onChange={(e) => setMinMin(Math.max(0, Number(e.target.value) || 0))} placeholder="0" />
+              </Field>
+              <p className="col-span-2 text-xs text-slate-500">ຕົວຢ່າງ: {rate.toLocaleString('en-US')} ₭/ຊມ, ຊ່ວງ {step} ນາທີ → ຫຼິ້ນ {step + 1} ນາທີ ຄິດເປັນ {Math.max(minMin, Math.ceil((step + 1) / step) * step)} ນາທີ = {Math.round((Math.max(minMin, Math.ceil((step + 1) / step) * step) * rate) / 60).toLocaleString('en-US')} ₭</p>
+            </div>
+          )}
+        </div>
       </div>
     </Modal>
   );

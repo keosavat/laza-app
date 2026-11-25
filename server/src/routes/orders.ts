@@ -4,6 +4,7 @@ import { can, requirePerm } from '../auth.ts';
 import { now } from '../db.ts';
 import { bad, conflict, dayRange, forbidden, int, notFound, num, oneOf, str } from '../lib/core.ts';
 import { localNow } from './reservations.ts';
+import { TIME_ITEM_NAME, endSession, syncTime } from '../lib/timed.ts';
 import { addItems, createOrder, getBranch, issueQr, loadOrder, orderDetail, payOrder, recalc, requireOpen, type NewItem, type PaymentInput } from '../lib/orders.ts';
 
 const ITEM_FLOW = ['pending', 'preparing', 'ready', 'served'] as const;
@@ -17,6 +18,8 @@ export function orderRoutes({ db, emit, print }: Ctx) {
   /** Floor view: every active table with its open order summary. */
   r.get('/floor', (req, res) => {
     const bid = req.user.bid;
+    // Running table clocks: bring each time line (and order total) up to date before listing.
+    for (const s of db.all("SELECT s.order_id FROM table_sessions s JOIN orders o ON o.id = s.order_id WHERE o.branch_id = ? AND o.status = 'open' AND s.ended_at IS NULL", bid)) syncTime(db, s.order_id);
     const zones = db.all('SELECT * FROM zones WHERE branch_id = ? ORDER BY sort, id', bid);
     const tables = db.all(
       `SELECT t.*, o.id AS order_id, o.total AS order_total, o.created_at AS opened_at, o.bill_printed_at,
@@ -24,8 +27,10 @@ export function orderRoutes({ db, emit, print }: Ctx) {
               (SELECT COUNT(*) FROM order_items WHERE order_id = o.id AND awaiting = 0 AND status IN ('pending','preparing','ready')) AS in_kitchen,
               (SELECT COALESCE(SUM(qty),0) FROM order_items WHERE order_id = o.id AND awaiting = 1 AND status != 'cancelled') AS awaiting_count,
               (SELECT COUNT(*) FROM qr_calls WHERE order_id = o.id AND handled_at IS NULL) AS calls_open,
-              CASE WHEN o.qr_token IS NOT NULL THEN 1 ELSE 0 END AS has_qr
-         FROM tables t LEFT JOIN orders o ON o.table_id = t.id AND o.status = 'open'
+              CASE WHEN o.qr_token IS NOT NULL THEN 1 ELSE 0 END AS has_qr,
+              ts.started_at AS timer_started_at, ts.paused_at AS timer_paused_at, ts.paused_sec AS timer_paused_sec, ts.ended_at AS timer_ended_at,
+              ts.rate AS timer_rate, ts.step AS timer_step, ts.min_minutes AS timer_min
+         FROM tables t LEFT JOIN orders o ON o.table_id = t.id AND o.status = 'open' LEFT JOIN table_sessions ts ON ts.order_id = o.id
         WHERE t.branch_id = ? AND t.active = 1 ORDER BY t.sort, t.id`,
       bid,
     );
@@ -85,6 +90,7 @@ export function orderRoutes({ db, emit, print }: Ctx) {
       tableId: req.body.tableId ? int(req.body.tableId, 'ໂຕະ') : null,
       customerName: str(req.body.customerName, 'ຊື່ລູກຄ້າ', { max: 80 }),
       guestCount: int(req.body.guestCount ?? 0, 'ຈຳນວນແຂກ', { min: 0, max: 200 }),
+      startTimer: req.body.startTimer !== false,
     });
     if (req.body.withQr) {
       issueQr(db, { bid: req.user.bid, uid: req.user.uid, orderId: id, durationHours: int(req.body.durationHours ?? 0, 'ໄລຍະເວລາ', { min: 0, max: 24 }) });
@@ -186,13 +192,15 @@ export function orderRoutes({ db, emit, print }: Ctx) {
   r.post('/orders/:id/cancel', requirePerm('pos'), (req, res) => {
     const o = loadOrder(db, int(req.params.id, 'id'), req.user.bid);
     requireOpen(o);
-    const active = db.get("SELECT COUNT(*) AS n FROM order_items WHERE order_id = ? AND status != 'cancelled'", o.id)!.n;
+    // The automatic time line of a time-billed table is not something a waiter ordered: an order with only that line, and no time charged yet, is still "empty".
+    const active = db.get("SELECT COUNT(*) AS n FROM order_items WHERE order_id = ? AND status != 'cancelled' AND NOT (menu_item_id IS NULL AND name = ? AND unit_price = 0)", o.id, TIME_ITEM_NAME)!.n;
     if (active && !can(req.user.role, 'voidItem')) throw forbidden('ອໍເດີມີລາຍການແລ້ວ: ຕ້ອງເປັນຜູ້ຈັດການຈຶ່ງຍົກເລີກໄດ້');
     const reason = str(req.body.reason, 'ເຫດຜົນ', { max: 200, required: active > 0 });
     const ts = now();
     db.tx(() => {
       db.run("UPDATE order_items SET status='cancelled', cancel_reason=?, updated_at=? WHERE order_id=? AND status != 'cancelled'", reason, ts, o.id);
       db.run("UPDATE orders SET status='cancelled', cancel_reason=?, cancelled_at=?, updated_at=? WHERE id=?", reason, ts, ts, o.id);
+      endSession(db, o.id, { sync: false });
       recalc(db, o.id);
       db.audit(req.user.bid, req.user.uid, 'cancel', 'order', o.id, { reason, activeItems: active });
     });

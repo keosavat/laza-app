@@ -10,6 +10,8 @@ import { printBill, printKitchenTicket } from '../lib/print';
 import MenuPicker, { type CartLine } from '../components/MenuPicker';
 import { CartLines, useCart } from '../components/Cart';
 import Checkout from '../components/Checkout';
+import TableClock from '../components/TableClock';
+import { stopClockForPayment } from '../lib/timed';
 import { Badge, Button, Field, Input, Modal, MoneyInput, Select, Spinner, cx, toast, useAction, useLoad } from '../components/ui';
 
 export default function OrderScreen() {
@@ -112,6 +114,11 @@ export default function OrderScreen() {
     const o = await send();
     if (!o) return;
     if (!o.items.some((i) => i.status !== 'cancelled')) return toast.err('ຍັງບໍ່ມີລາຍການ');
+    try {
+      await stopClockForPayment(o);
+    } catch (e) {
+      return toast.err(e);
+    }
     await reload();
     setModal('checkout');
   }
@@ -154,6 +161,7 @@ export default function OrderScreen() {
             <ActionBtn icon={Ban} label="ຍົກເລີກ" onClick={() => setModal('cancel')} danger />
           </div>
         )}
+        {!closed && <TableClock order={order} onChanged={reload} />}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">

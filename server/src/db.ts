@@ -357,6 +357,28 @@ function migrate(raw: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_resv_day ON reservations(branch_id, reserved_date, reserved_time);
     CREATE INDEX IF NOT EXISTS idx_resv_table ON reservations(table_id, reserved_date);
   `);
+  // Time-billed tables: a table can earn by the hour; each order on it has one clock (session).
+  addColumn(raw, 'tables', 'rate_per_hour', 'INTEGER NOT NULL DEFAULT 0'); // ₭ per hour, 0 = normal table
+  addColumn(raw, 'tables', 'time_step', 'INTEGER NOT NULL DEFAULT 15'); // billed in blocks of N minutes (rounded up)
+  addColumn(raw, 'tables', 'time_min', 'INTEGER NOT NULL DEFAULT 0'); // minimum minutes billed
+  raw.exec(`
+    CREATE TABLE IF NOT EXISTS table_sessions (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      order_id INTEGER NOT NULL UNIQUE REFERENCES orders(id),
+      table_id INTEGER NOT NULL REFERENCES tables(id),
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      paused_at TEXT,
+      paused_sec INTEGER NOT NULL DEFAULT 0,
+      rate INTEGER NOT NULL,
+      step INTEGER NOT NULL,
+      min_minutes INTEGER NOT NULL,
+      item_id INTEGER REFERENCES order_items(id),
+      user_id INTEGER REFERENCES users(id),
+      created_at TEXT NOT NULL
+    );
+  `);
   // Procurement: suppliers, purchase orders (draft → ordered → partial/received) and what we paid them.
   raw.exec(`
     CREATE TABLE IF NOT EXISTS suppliers (

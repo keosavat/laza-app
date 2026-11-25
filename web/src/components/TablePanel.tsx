@@ -8,6 +8,8 @@ import { can, kip, since, STATUS_CLASS, STATUS_LABEL, time } from '../lib/format
 import { printBill } from '../lib/print';
 import AddItemsModal from './AddItemsModal';
 import Checkout from './Checkout';
+import TableClock from './TableClock';
+import { stopClockForPayment } from '../lib/timed';
 import { Badge, Button, Spinner, cx, toast, useAction, useLoad } from './ui';
 
 export default function TablePanel({ orderId, onClose }: { orderId: number; onClose: () => void }) {
@@ -54,6 +56,12 @@ export default function TablePanel({ orderId, onClose }: { orderId: number; onCl
         </button>
       </div>
 
+      {open && (order.timer || order.table_rate) ? (
+        <div className="border-b border-slate-200 px-3 pb-3">
+          <TableClock order={order} onChanged={reload} />
+        </div>
+      ) : null}
+
       {open && (
         <div className="grid grid-cols-2 gap-2 border-b border-slate-200 p-3">
           <Button size="lg" className="col-span-2" onClick={() => setModal('add')}>
@@ -66,7 +74,16 @@ export default function TablePanel({ orderId, onClose }: { orderId: number; onCl
             <Button
               variant="secondary"
               className="border-emerald-300! text-emerald-700!"
-              onClick={() => (waiting.length ? toast.err('ກະລຸນາຢືນຢັນ ຫຼື ປະຕິເສດລາຍການຈາກລູກຄ້າກ່ອນຊຳລະ') : setModal('pay'))}
+              onClick={async () => {
+                if (waiting.length) return toast.err('ກະລຸນາຢືນຢັນ ຫຼື ປະຕິເສດລາຍການຈາກລູກຄ້າກ່ອນຊຳລະ');
+                try {
+                  await stopClockForPayment(order);
+                } catch (e) {
+                  return toast.err(e);
+                }
+                await reload();
+                setModal('pay');
+              }}
               disabled={!live.length}
             >
               <Wallet className="size-4" /> ຊຳລະເງິນ

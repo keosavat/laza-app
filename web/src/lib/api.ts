@@ -20,12 +20,14 @@ export interface MenuItem {
   portions: number | null; cost_from_recipe: number;
 }
 export interface Zone { id: number; name: string; sort: number }
-export interface Table { id: number; zone_id: number | null; name: string; seats: number; sort: number; active: number }
+export interface Table { id: number; zone_id: number | null; name: string; seats: number; sort: number; active: number; rate_per_hour: number; time_step: number; time_min: number }
 export interface FloorTable extends Table {
   order_id: number | null; order_total: number | null; opened_at: string | null;
   bill_printed_at: string | null; item_count: number; in_kitchen: number;
   awaiting_count: number; calls_open: number; has_qr: number;
   resv_id: number | null; resv_time: string | null; resv_name: string | null; resv_party: number | null;
+  timer_started_at: string | null; timer_paused_at: string | null; timer_paused_sec: number | null; timer_ended_at: string | null;
+  timer_rate: number | null; timer_step: number | null; timer_min: number | null;
 }
 export type ResvStatus = 'booked' | 'seated' | 'cancelled' | 'no_show';
 export interface Reservation {
@@ -51,6 +53,8 @@ export interface Order {
   created_at: string; paid_at: string | null; bill_printed_at: string | null; created_by_name?: string;
   qr_token: string | null; qr_expires_at: string | null; guest_count: number;
   items: OrderItem[]; payments: Payment[];
+  /** The table clock (time-billed tables) and the table's hourly rate (0 = normal table). */
+  timer?: import('./timed').Timer | null; table_rate?: number | null;
 }
 export interface OrderRow extends Omit<Order, 'items' | 'payments'> { item_count: number; methods: string | null; paid_by_name: string | null }
 export interface Shift {

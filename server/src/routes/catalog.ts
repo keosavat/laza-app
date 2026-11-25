@@ -186,16 +186,25 @@ export function catalogRoutes({ db, emit }: Ctx) {
   r.get('/tables', (req, res) => {
     res.json(db.all('SELECT * FROM tables WHERE branch_id = ? ORDER BY sort, id', req.user.bid));
   });
+  /** Time-billing settings of a table: ₭ per hour (0 = normal table), billing block in minutes, minimum minutes. */
+  const timeFields = (b: any, prev?: any): [number, number, number] => {
+    const rate = int(b.ratePerHour ?? prev?.rate_per_hour ?? 0, 'ລາຄາ/ຊົ່ວໂມງ', { min: 0, max: 1e9 });
+    const step = int(b.timeStep ?? prev?.time_step ?? 15, 'ຄິດເປັນຊ່ວງ (ນາທີ)', { min: 1, max: 60 });
+    if (![1, 5, 10, 15, 30, 60].includes(step)) throw bad('ຄິດເປັນຊ່ວງໄດ້: 1, 5, 10, 15, 30 ຫຼື 60 ນາທີ');
+    const min = int(b.timeMin ?? prev?.time_min ?? 0, 'ເວລາຂັ້ນຕ່ຳ (ນາທີ)', { min: 0, max: 600 });
+    return [rate, step, min];
+  };
   r.post('/tables', requirePerm('admin'), (req, res) => {
     const zoneId = req.body.zoneId ? int(req.body.zoneId, 'ໂຊນ') : null;
     checkZone(req.user.bid, zoneId);
     const { id } = db.run(
-      'INSERT INTO tables (branch_id, zone_id, name, seats, sort, active) VALUES (?,?,?,?,?,1)',
+      'INSERT INTO tables (branch_id, zone_id, name, seats, sort, active, rate_per_hour, time_step, time_min) VALUES (?,?,?,?,?,1,?,?,?)',
       req.user.bid,
       zoneId,
       str(req.body.name, 'ຊື່ໂຕະ', { required: true, max: 40 }),
       int(req.body.seats ?? 4, 'ຈຳນວນບ່ອນນັ່ງ', { min: 1, max: 100 }),
       int(req.body.sort, 'ລຳດັບ'),
+      ...timeFields(req.body),
     );
     emit(req.user.bid, ['tables']);
     res.status(201).json(db.get('SELECT * FROM tables WHERE id = ?', id));
@@ -229,12 +238,13 @@ export function catalogRoutes({ db, emit }: Ctx) {
     const zoneId = req.body.zoneId === undefined ? t.zone_id : req.body.zoneId ? int(req.body.zoneId, 'ໂຊນ') : null;
     checkZone(req.user.bid, zoneId);
     db.run(
-      'UPDATE tables SET zone_id=?, name=?, seats=?, sort=?, active=? WHERE id=?',
+      'UPDATE tables SET zone_id=?, name=?, seats=?, sort=?, active=?, rate_per_hour=?, time_step=?, time_min=? WHERE id=?',
       zoneId,
       str(req.body.name ?? t.name, 'ຊື່ໂຕະ', { required: true, max: 40 }),
       int(req.body.seats ?? t.seats, 'ຈຳນວນບ່ອນນັ່ງ', { min: 1, max: 100 }),
       int(req.body.sort ?? t.sort, 'ລຳດັບ'),
       req.body.active === undefined ? t.active : bool(req.body.active),
+      ...timeFields(req.body, t),
       t.id,
     );
     emit(req.user.bid, ['tables']);

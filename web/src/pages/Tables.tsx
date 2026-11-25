@@ -4,6 +4,7 @@ import { Users, Clock, Printer, ChefHat, QrCode, Hand, Bell, Minus, Plus, Calend
 import { get, post, type FloorTable, type Order, type Zone } from '../lib/api';
 import { useSession, useSync } from '../lib/store';
 import { kip, since } from '../lib/format';
+import { clock, timeCharge, useNow } from '../lib/timed';
 import { DURATIONS } from '../components/QrModal';
 import TablePanel from '../components/TablePanel';
 import { Button, Empty, Field, Input, Modal, PageHeader, Select, Spinner, cx, toast, useLoad } from '../components/ui';
@@ -19,7 +20,14 @@ export default function Tables() {
   const [openFor, setOpenFor] = useState<FloorTable | null>(null);
   const [panel, setPanel] = useState<number | null>(null); // order id shown in the side panel
   const [, tick] = useState(0);
+  const nowMs = useNow(true); // time-billed tables tick every second
   useSync(['tables', 'orders'], reload);
+  const hasClock = !!data?.tables.some((t) => t.timer_started_at && !t.timer_ended_at && !t.timer_paused_at);
+  useEffect(() => {
+    if (!hasClock) return;
+    const x = setInterval(reload, 30_000); // keep the order totals of running clocks fresh
+    return () => clearInterval(x);
+  }, [hasClock, reload]);
   useEffect(() => {
     const t = setInterval(() => tick((x) => x + 1), 30_000);
     return () => clearInterval(t);
@@ -116,7 +124,11 @@ export default function Tables() {
                 </div>
                 {busy ? (
                   <div className="space-y-0.5 text-sm">
-                    <div className="tabular text-base font-semibold">{kip(t.order_total)}</div>
+                    {t.timer_started_at && t.timer_rate ? (
+                      <TableTimer t={t} nowMs={nowMs} />
+                    ) : (
+                      <div className="tabular text-base font-semibold">{kip(t.order_total)}</div>
+                    )}
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-white/85">
                       <span className="flex items-center gap-1"><Clock className="size-3" />{since(t.opened_at)}</span>
                       {t.in_kitchen > 0 && <span className="flex items-center gap-1"><ChefHat className="size-3" />{t.in_kitchen}</span>}
@@ -217,5 +229,19 @@ function ZoneBtn({ active, onClick, children }: { active: boolean; onClick: () =
     <button onClick={onClick} className={cx('rounded-md px-3 py-1.5 text-sm', active ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100')}>
       {children}
     </button>
+  );
+}
+
+/** Live clock and time charge on a time-billed table's card (the order total below it refreshes with the floor list). */
+function TableTimer({ t, nowMs }: { t: FloorTable; nowMs: number }) {
+  const timer = { started_at: t.timer_started_at!, ended_at: t.timer_ended_at, paused_at: t.timer_paused_at, paused_sec: t.timer_paused_sec ?? 0, rate: t.timer_rate!, step: t.timer_step ?? 15, min_minutes: t.timer_min ?? 0 };
+  const c = timeCharge(timer, nowMs);
+  const state = t.timer_ended_at ? 'ຢຸດນັບ' : t.timer_paused_at ? 'ພັກ' : '';
+  return (
+    <>
+      <div className="tabular text-xl font-bold leading-tight">{clock(c.seconds)}{state && <span className="ml-1.5 rounded bg-white/25 px-1 text-[11px] font-semibold">{state}</span>}</div>
+      <div className="tabular text-xs text-white/85">ຄ່າເວລາ {kip(c.charge)}</div>
+      <div className="tabular text-base font-semibold">{kip(t.order_total)}</div>
+    </>
   );
 }

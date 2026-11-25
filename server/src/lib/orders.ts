@@ -6,6 +6,7 @@ import { deductForOrder, portionsMap } from './inventory.ts';
 import { promoDiscount } from './promos.ts';
 import { chargeDebt, getCustomer } from './debts.ts';
 import { addPoints, checkRedeem, earnedFor } from './loyalty.ts';
+import { endSession, startSession, syncTime, timerState } from './timed.ts';
 
 export function getBranch(db: Db, bid: number): Row {
   const b = db.get('SELECT * FROM branches WHERE id = ?', bid);
@@ -75,8 +76,10 @@ export function recalc(db: Db, orderId: number) {
 const parseItem = (it: Row) => ({ ...it, options: JSON.parse(it.options_json || '[]'), options_json: undefined });
 
 export function orderDetail(db: Db, orderId: number, bid: number) {
+  // A running table clock keeps the time line (and the total) current whenever the order is looked at.
+  if (db.get('SELECT 1 FROM orders WHERE id = ? AND branch_id = ?', orderId, bid)) syncTime(db, orderId);
   const o = db.get(
-    `SELECT o.*, t.name AS table_name, u.name AS created_by_name, c.name AS crm_name, c.phone AS crm_phone
+    `SELECT o.*, t.name AS table_name, t.rate_per_hour AS table_rate, u.name AS created_by_name, c.name AS crm_name, c.phone AS crm_phone
        FROM orders o LEFT JOIN tables t ON t.id = o.table_id LEFT JOIN users u ON u.id = o.created_by LEFT JOIN customers c ON c.id = o.customer_id
       WHERE o.id = ? AND o.branch_id = ?`,
     orderId,
@@ -91,7 +94,7 @@ export function orderDetail(db: Db, orderId: number, bid: number) {
     )
     .map(parseItem);
   const payments = db.all('SELECT * FROM payments WHERE order_id = ? ORDER BY id', orderId);
-  return { ...o, items, payments };
+  return { ...o, items, payments, timer: timerState(db, orderId) };
 }
 
 function nextSeq(db: Db, bid: number, col: 'order_seq' | 'bill_seq'): number {
@@ -101,7 +104,7 @@ function nextSeq(db: Db, bid: number, col: 'order_seq' | 'bill_seq'): number {
 
 export function createOrder(
   db: Db,
-  p: { bid: number; uid: number; type: 'dine_in' | 'takeaway'; tableId: number | null; customerName: string; guestCount?: number },
+  p: { bid: number; uid: number; type: 'dine_in' | 'takeaway'; tableId: number | null; customerName: string; guestCount?: number; startTimer?: boolean },
 ) {
   return db.tx(() => {
     const shift = requireShift(db, p.bid);
@@ -135,6 +138,11 @@ export function createOrder(
       ts,
     );
     db.audit(p.bid, p.uid, 'create', 'order', id, { type: p.type, tableId: p.tableId });
+    // A time-billed table starts its clock when it is opened (unless the staff chose to start it later).
+    if (p.type === 'dine_in' && p.tableId && p.startTimer !== false) {
+      const t = db.get('SELECT rate_per_hour FROM tables WHERE id = ?', p.tableId)!;
+      if (t.rate_per_hour > 0) startSession(db, { bid: p.bid, uid: p.uid, orderId: id, tableId: p.tableId });
+    }
     return id;
   });
 }
@@ -248,6 +256,8 @@ export function payOrder(db: Db, p: { bid: number; uid: number; orderId: number;
     if (waiting) throw conflict(`ມີ ${waiting} ລາຍການຈາກລູກຄ້າທີ່ຍັງລໍຖ້າຢືນຢັນ: ກະລຸນາຢືນຢັນ ຫຼື ປະຕິເສດກ່ອນຊຳລະ`);
     const active = db.get("SELECT COUNT(*) AS n FROM order_items WHERE order_id = ? AND status != 'cancelled'", o.id)!.n;
     if (!active) throw bad('ອໍເດີບໍ່ມີລາຍການ');
+    endSession(db, o.id, { sync: false }); // paying stops the clock
+    syncTime(db, o.id);
     const t = recalc(db, o.id);
     const b = getBranch(db, p.bid);
     const rateOf = (c: string) => (c === 'USD' ? b.rate_usd : c === 'THB' ? b.rate_thb : 1);
