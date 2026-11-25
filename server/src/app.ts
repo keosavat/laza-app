@@ -22,6 +22,8 @@ import { ownerRoutes } from './routes/owner.ts';
 import { timerRoutes } from './routes/timers.ts';
 import { apiV1Routes } from './routes/apiv1.ts';
 import { integrationRoutes } from './routes/integrations.ts';
+import { aiRoutes } from './routes/ai.ts';
+import type { AiClientFactory } from './lib/ai.ts';
 import { createPrintService, type PrintService } from './print/service.ts';
 import { securityHeaders } from './lib/security.ts';
 
@@ -39,6 +41,8 @@ export interface Ctx {
 }
 
 export interface AppOptions {
+  /** Tests pass a fake Claude client here. */
+  aiClientFactory?: AiClientFactory;
   dbFile: string;
   jwtSecret: string;
   webDist?: string;
@@ -133,7 +137,7 @@ export function createApp(opts: AppOptions) {
   app.use('/api/auth', authRoutes(ctx));
   app.use('/api/public/qr', qrPublicRoutes(ctx));
   app.use('/api/v1', apiV1Routes(ctx));
-  app.use('/api', auth.middleware, idempotency, customerSync, catalogRoutes(ctx), orderRoutes(ctx), qrStaffRoutes(ctx), printerRoutes(ctx), inventoryRoutes(ctx), promotionRoutes(ctx), debtRoutes(ctx), reservationRoutes(ctx), purchasingRoutes(ctx), depositRoutes(ctx), branchRoutes(ctx), ownerRoutes(ctx), timerRoutes(ctx), integrationRoutes(ctx), opsRoutes(ctx));
+  app.use('/api', auth.middleware, idempotency, customerSync, catalogRoutes(ctx), orderRoutes(ctx), qrStaffRoutes(ctx), printerRoutes(ctx), inventoryRoutes(ctx), promotionRoutes(ctx), debtRoutes(ctx), reservationRoutes(ctx), purchasingRoutes(ctx), depositRoutes(ctx), branchRoutes(ctx), ownerRoutes(ctx), timerRoutes(ctx), integrationRoutes(ctx), aiRoutes(ctx, opts.aiClientFactory), opsRoutes(ctx));
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'ບໍ່ພົບ API ນີ້')));
 
   // Serve the built web app (production) with SPA fallback.

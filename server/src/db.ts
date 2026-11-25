@@ -405,6 +405,29 @@ function migrate(raw: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_webhook_due ON webhook_deliveries(status, next_at);
     CREATE INDEX IF NOT EXISTS idx_webhook_endpoint ON webhook_deliveries(endpoint_id, id);
   `);
+  // AI analytics: consent + key + limits per restaurant, and a usage log (tokens only, never the data sent).
+  raw.exec(`
+    CREATE TABLE IF NOT EXISTS ai_settings (
+      restaurant_id INTEGER PRIMARY KEY REFERENCES restaurants(id),
+      enabled INTEGER NOT NULL DEFAULT 0,
+      api_key TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT 'claude-opus-5-5',
+      daily_limit INTEGER NOT NULL DEFAULT 30,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS ai_usage (
+      id INTEGER PRIMARY KEY,
+      restaurant_id INTEGER NOT NULL,
+      branch_id INTEGER,
+      user_id INTEGER,
+      kind TEXT NOT NULL,
+      model TEXT NOT NULL,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_usage_day ON ai_usage(restaurant_id, created_at);
+  `);
   // Time-billed tables: a table can earn by the hour; each order on it has one clock (session).
   addColumn(raw, 'tables', 'rate_per_hour', 'INTEGER NOT NULL DEFAULT 0'); // ₭ per hour, 0 = normal table
   addColumn(raw, 'tables', 'time_step', 'INTEGER NOT NULL DEFAULT 15'); // billed in blocks of N minutes (rounded up)

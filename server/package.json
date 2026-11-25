@@ -10,6 +10,7 @@
     "fake-printer": "node --disable-warning=ExperimentalWarning tools/fake-printer.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.14.0",
     "@fontsource/inter": "^5.3.0",
     "@fontsource/noto-sans-lao": "^5.3.0",
     "@napi-rs/canvas": "^1.2.0",
