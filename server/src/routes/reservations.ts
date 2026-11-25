@@ -6,6 +6,7 @@ import { requirePerm } from '../auth.ts';
 import { bad, conflict, int, notFound, oneOf, str } from '../lib/core.ts';
 import { getCustomer } from '../lib/debts.ts';
 import { createOrder, getBranch, orderDetail } from '../lib/orders.ts';
+import { queueEvent } from '../lib/webhooks.ts';
 
 const toMin = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
 
@@ -103,8 +104,10 @@ export function reservationRoutes({ db, emit }: Ctx) {
       db.audit(bid, req.user.uid, 'create', 'reservation', id, { name: v.name, date: v.date, time: v.time, party: v.party });
       return id;
     });
+    const created = one(id);
+    queueEvent(db, bid, 'reservation.created', { id, name: created.name, phone: created.phone, party_size: created.party_size, table: created.table_name, date: created.reserved_date, time: created.reserved_time, note: created.note });
     changed(bid);
-    res.status(201).json(one(id));
+    res.status(201).json(created);
   });
 
   r.put('/reservations/:id', requirePerm('pos'), (req, res) => {

@@ -9,10 +9,12 @@ import { Button, toast, useLoad } from './ui';
 
 interface Alerts {
   calls: { id: number; type: 'waiter' | 'bill'; created_at: string; order_id: number; table_name: string }[];
-  awaiting: { order_id: number; table_name: string; n: number; since: string }[];
+  awaiting: { order_id: number; table_name: string | null; queue_no: number | null; customer_name: string; n: number; since: string }[];
   /** Customer items already sent to the kitchen (auto-confirm), for the last few minutes. */
-  fresh: { order_id: number; table_name: string; n: number; since: string }[];
+  fresh: { order_id: number; table_name: string | null; queue_no: number | null; customer_name: string; n: number; since: string }[];
 }
+/** "ໂຕະ A01", or for a take-away / API order "ກັບບ້ານ · ຄິວ 3". */
+const whereOf = (w: { table_name: string | null; queue_no: number | null }) => (w.table_name ? `ໂຕະ ${w.table_name}` : `ກັບບ້ານ${w.queue_no ? ` · ຄິວ ${w.queue_no}` : ''}`);
 const EMPTY: Alerts = { calls: [], awaiting: [], fresh: [] };
 
 /** Floating list of things customers are waiting on: items to approve, "call waiter", "bill please". */
@@ -72,7 +74,7 @@ export default function QrAlerts() {
         <div key={w.order_id} className="pointer-events-auto rounded-xl border-2 border-brand-500 bg-brand-50 p-3 shadow-lg">
           <div className="flex items-center gap-2 font-semibold text-brand-800">
             <HandPlatter className="size-4" />
-            ໂຕະ {w.table_name}: ລູກຄ້າສັ່ງ {w.n} ລາຍການ
+            {whereOf(w)}: ລູກຄ້າສັ່ງ {w.n} ລາຍການ
             <span className="ml-auto text-xs font-normal text-brand-700">{since(w.since)}</span>
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2">
@@ -85,7 +87,7 @@ export default function QrAlerts() {
         <div key={w.order_id} className="pointer-events-auto rounded-xl border-2 border-rose-400 bg-rose-50 p-3 shadow-lg">
           <div className="flex items-center gap-2 font-semibold text-rose-800">
             <HandPlatter className="size-4" />
-            ໂຕະ {w.table_name}: {w.n} ລາຍການລໍຢືນຢັນ
+            {whereOf(w)}: {w.n} ລາຍການລໍຢືນຢັນ
             <span className="ml-auto text-xs font-normal text-rose-600">{since(w.since)}</span>
           </div>
           <Button size="sm" className="mt-2 w-full" onClick={() => nav(`/order/${w.order_id}`)}>ເປີດເພື່ອຢືນຢັນ</Button>

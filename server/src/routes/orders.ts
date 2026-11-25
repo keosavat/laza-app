@@ -5,6 +5,7 @@ import { now } from '../db.ts';
 import { bad, conflict, dayRange, forbidden, int, notFound, num, oneOf, str } from '../lib/core.ts';
 import { localNow } from './reservations.ts';
 import { TIME_ITEM_NAME, endSession, syncTime } from '../lib/timed.ts';
+import { publicOrder, queueEvent } from '../lib/webhooks.ts';
 import { addItems, createOrder, getBranch, issueQr, loadOrder, orderDetail, payOrder, recalc, requireOpen, type NewItem, type PaymentInput } from '../lib/orders.ts';
 
 const ITEM_FLOW = ['pending', 'preparing', 'ready', 'served'] as const;
@@ -95,6 +96,7 @@ export function orderRoutes({ db, emit, print }: Ctx) {
     if (req.body.withQr) {
       issueQr(db, { bid: req.user.bid, uid: req.user.uid, orderId: id, durationHours: int(req.body.durationHours ?? 0, 'ໄລຍະເວລາ', { min: 0, max: 24 }) });
     }
+    queueEvent(db, req.user.bid, 'order.created', publicOrder(db, id));
     changed(req.user.bid);
     res.status(201).json(orderDetail(db, id, req.user.bid));
   });
@@ -185,6 +187,7 @@ export function orderRoutes({ db, emit, print }: Ctx) {
     const redeemPoints = req.body.redeemPoints ? int(req.body.redeemPoints, 'ຄະແນນ', { min: 0 }) : 0;
     const result = payOrder(db, { bid: req.user.bid, uid: req.user.uid, orderId, payments, debt, customerId, redeemPoints });
     const tickets = req.body.print ? print.receipt(req.user.bid, orderId) : 0;
+    queueEvent(db, req.user.bid, 'order.paid', publicOrder(db, orderId));
     changed(req.user.bid);
     res.json({ ...result, printedByServer: tickets > 0, order: orderDetail(db, orderId, req.user.bid) });
   });
@@ -204,6 +207,7 @@ export function orderRoutes({ db, emit, print }: Ctx) {
       recalc(db, o.id);
       db.audit(req.user.bid, req.user.uid, 'cancel', 'order', o.id, { reason, activeItems: active });
     });
+    queueEvent(db, req.user.bid, 'order.cancelled', publicOrder(db, o.id));
     changed(req.user.bid);
     res.json(orderDetail(db, o.id, req.user.bid));
   });

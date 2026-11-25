@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { createApp } from './app.ts';
 import { seedIfEmpty } from './seed.ts';
 import { backupDb, usersWithDefaultPassword } from './lib/security.ts';
+import { startWebhookWorker } from './lib/webhooks.ts';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dataDir = process.env.LAZA_DATA_DIR ?? path.join(root, 'data');
@@ -25,6 +26,7 @@ const { server, db, print } = createApp({
 });
 
 print.start();
+startWebhookWorker(db); // delivers queued webhook events (with retries)
 
 // One consistent copy of the database per day (kept 14 days). Copy the folder to a USB drive / cloud storage too.
 const backupDir = process.env.LAZA_BACKUP_DIR ?? path.join(dataDir, 'backups');

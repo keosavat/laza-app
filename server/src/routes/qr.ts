@@ -78,7 +78,7 @@ export function qrStaffRoutes({ db, emit, print }: Ctx) {
       req.user.bid,
     );
     const awaiting = db.all(
-      `SELECT o.id AS order_id, t.name AS table_name, SUM(oi.qty) AS n, MIN(oi.created_at) AS since
+      `SELECT o.id AS order_id, t.name AS table_name, o.queue_no, o.customer_name, SUM(oi.qty) AS n, MIN(oi.created_at) AS since
          FROM order_items oi JOIN orders o ON o.id = oi.order_id LEFT JOIN tables t ON t.id = o.table_id
         WHERE o.branch_id = ? AND o.status = 'open' AND oi.awaiting = 1 AND oi.status != 'cancelled'
         GROUP BY o.id ORDER BY since`,
@@ -86,7 +86,7 @@ export function qrStaffRoutes({ db, emit, print }: Ctx) {
     );
     // Items a customer ordered that went straight to the kitchen (auto-confirm on): staff still need to know, for a few minutes.
     const fresh = db.all(
-      `SELECT o.id AS order_id, t.name AS table_name, SUM(oi.qty) AS n, MAX(oi.created_at) AS since
+      `SELECT o.id AS order_id, t.name AS table_name, o.queue_no, o.customer_name, SUM(oi.qty) AS n, MAX(oi.created_at) AS since
          FROM order_items oi JOIN orders o ON o.id = oi.order_id LEFT JOIN tables t ON t.id = o.table_id
         WHERE o.branch_id = ? AND o.status = 'open' AND oi.source = 'customer' AND oi.awaiting = 0 AND oi.status != 'cancelled' AND oi.created_at >= ?
         GROUP BY o.id ORDER BY since`,

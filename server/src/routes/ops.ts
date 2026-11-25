@@ -7,6 +7,7 @@ import { now } from '../db.ts';
 import { HttpError, bad, conflict, dayRange, forbidden, int, localDate, notFound, num, oneOf, str } from '../lib/core.ts';
 import { currentShift, getBranch, shiftCash } from '../lib/orders.ts';
 import { createLoginGuard, usersWithDefaultPassword } from '../lib/security.ts';
+import { queueEvent } from '../lib/webhooks.ts';
 
 export function authRoutes({ db, auth }: Ctx) {
   const r = Router();
@@ -99,6 +100,10 @@ export function opsRoutes({ db, emit, print }: Ctx) {
       );
       db.audit(req.user.bid, req.user.uid, 'close', 'shift', s.id, { counted, expected: sum.expectedCash });
       return { shift: db.get('SELECT * FROM shifts WHERE id = ?', s.id), summary: sum, variance: counted - sum.expectedCash };
+    });
+    queueEvent(db, req.user.bid, 'shift.closed', {
+      shift_id: out.shift.id, opened_at: out.shift.opened_at, closed_at: out.shift.closed_at, counted_cash: out.shift.counted_cash,
+      expected_cash: out.summary.expectedCash, variance: out.variance, bills: out.summary.bills, sales_total: out.summary.salesTotal,
     });
     emit(req.user.bid, ['shift']);
     res.json(out);

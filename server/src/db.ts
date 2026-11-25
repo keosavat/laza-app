@@ -357,6 +357,54 @@ function migrate(raw: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_resv_day ON reservations(branch_id, reserved_date, reserved_time);
     CREATE INDEX IF NOT EXISTS idx_resv_table ON reservations(table_id, reserved_date);
   `);
+  // Public API + webhooks: keys (stored hashed), receivers, and an outbox of events to deliver.
+  addColumn(raw, 'orders', 'external_source', 'TEXT'); // set when an order was created through the API (e.g. "grab")
+  addColumn(raw, 'orders', 'external_ref', 'TEXT'); // the caller's own order id, makes retries safe
+  raw.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_external ON orders(branch_id, external_source, external_ref) WHERE external_ref IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      name TEXT NOT NULL,
+      prefix TEXT NOT NULL,
+      key_hash TEXT NOT NULL UNIQUE,
+      scopes TEXT NOT NULL,
+      auto_confirm INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_by INTEGER REFERENCES users(id),
+      created_at TEXT NOT NULL,
+      last_used_at TEXT,
+      revoked_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS webhook_endpoints (
+      id INTEGER PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      url TEXT NOT NULL,
+      secret TEXT NOT NULL,
+      events TEXT NOT NULL DEFAULT '*',
+      description TEXT NOT NULL DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS webhook_deliveries (
+      id INTEGER PRIMARY KEY,
+      endpoint_id INTEGER NOT NULL REFERENCES webhook_endpoints(id) ON DELETE CASCADE,
+      branch_id INTEGER NOT NULL,
+      event_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','ok','failed','dead')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_at TEXT,
+      last_status INTEGER,
+      last_error TEXT NOT NULL DEFAULT '',
+      response_ms INTEGER,
+      created_at TEXT NOT NULL,
+      delivered_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_webhook_due ON webhook_deliveries(status, next_at);
+    CREATE INDEX IF NOT EXISTS idx_webhook_endpoint ON webhook_deliveries(endpoint_id, id);
+  `);
   // Time-billed tables: a table can earn by the hour; each order on it has one clock (session).
   addColumn(raw, 'tables', 'rate_per_hour', 'INTEGER NOT NULL DEFAULT 0'); // ₭ per hour, 0 = normal table
   addColumn(raw, 'tables', 'time_step', 'INTEGER NOT NULL DEFAULT 15'); // billed in blocks of N minutes (rounded up)
